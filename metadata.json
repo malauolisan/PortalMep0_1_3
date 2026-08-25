@@ -1,0 +1,6 @@
+{
+  "name": "Movimento Espírita Progressista",
+  "description": "Portal agregador de instituições sem fins lucrativos, promovendo convivência e divulgação de notícias e eventos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,77 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+         request.auth.token.email == "epaz@e-paz.com.br" ||
+         request.auth.token.email == "admin@mep.org.br");
+    }
+
+    function isColaborador() {
+      return isAuthenticated() &&
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'colaborador'])) ||
+         request.auth.token.email == "epaz@e-paz.com.br" ||
+         request.auth.token.email == "admin@mep.org.br");
+    }
+
+    // --- Rules ---
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /news/{newsId} {
+      allow read: if true;
+      allow create, update: if isColaborador();
+      allow delete: if isColaborador();
+    }
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create, update: if isColaborador();
+      allow delete: if isColaborador();
+    }
+
+    match /institutions/{instId} {
+      allow read: if true;
+      allow create, update: if isColaborador();
+      allow delete: if isColaborador();
+    }
+
+    match /articles/{articleId} {
+      allow read: if true;
+      allow create, update: if isColaborador();
+      allow delete: if isColaborador();
+    }
+
+    match /slides/{slideId} {
+      allow read: if true;
+      allow create, update, delete: if isColaborador();
+    }
+
+    match /featuredModules/{moduleId} {
+      allow read: if true;
+      allow create, update, delete: if isColaborador();
+    }
+
+    match /test/{docId} {
+      allow read: if true;
+    }
+  }
+}

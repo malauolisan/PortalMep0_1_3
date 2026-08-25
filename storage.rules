@@ -1,0 +1,49 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isColaborador() {
+      return request.auth != null && (
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'colaborador'] ||
+        ((request.auth.token.email == "epaz@e-paz.com.br" || request.auth.token.email == "admin@mep.org.br") && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isAdmin() {
+      return request.auth != null && (
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        ((request.auth.token.email == "epaz@e-paz.com.br" || request.auth.token.email == "admin@mep.org.br") && request.auth.token.email_verified == true)
+      );
+    }
+
+    match /news/{allPaths=**} {
+      allow read: if true;
+      allow write: if isColaborador();
+    }
+    
+    match /events/{allPaths=**} {
+      allow read: if true;
+      allow write: if isColaborador();
+    }
+    
+    match /institutions/{allPaths=**} {
+      allow read: if true;
+      allow write: if isColaborador();
+    }
+    
+    match /articles/{allPaths=**} {
+      allow read: if true;
+      allow write: if isColaborador();
+    }
+    
+    match /slides/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /modules/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
