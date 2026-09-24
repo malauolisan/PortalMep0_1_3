@@ -65,6 +65,7 @@
         "author": { "type": "string", "description": "Nome do autor" },
         "authorId": { "type": "string", "description": "UID do autor" },
         "date": { "type": "string", "description": "Data de publicação" },
+        "image": { "type": "string", "description": "URL da imagem de destaque do artigo" },
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp de criação" }
       },
       "required": ["title", "content", "author", "date"]

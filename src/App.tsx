@@ -5,11 +5,15 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { mockNews, mockEvents, mockInstitutions, mockArticles } from './data';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ContentProvider, useContent } from './ContentContext';
 import { LoginPage, AdminLayout, Dashboard, ManageNews, ManageEvents, ManageInstitutions, ManageArticles, ManageUsers, ManageSlides, ManageFeaturedModules } from './Admin';
 import { auth, createNewUser, db } from './firebase';
 import { setDoc, doc, getDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { customUrlTransform, markdownComponents, formatExternalUrl } from './utils/linkUtils';
+
+export { customUrlTransform, markdownComponents, formatExternalUrl };
 
 // --- Components ---
 
@@ -58,43 +62,6 @@ const BootstrapAdmin = () => {
   }, []);
 
   return null;
-};
-
-// --- Markdown Link and Image Renderer ---
-const markdownComponents = {
-  a: ({ node, href, children, ...props }: any) => {
-    const safeHref = href || '#';
-    const isExternal = safeHref.startsWith('http://') || safeHref.startsWith('https://') || safeHref.startsWith('//') || safeHref.startsWith('mailto:');
-    return (
-      <a
-        href={safeHref}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noopener noreferrer' : undefined}
-        className="text-emerald-600 underline hover:text-emerald-800 transition-colors cursor-pointer break-words font-medium"
-        onClick={(e) => {
-          if (!safeHref || safeHref === '#') {
-            e.preventDefault();
-          }
-        }}
-        {...props}
-      >
-        {children}
-      </a>
-    );
-  },
-  img: ({ node, src, alt, ...props }: any) => {
-    if (!src) return null;
-    return (
-      <img
-        src={src}
-        alt={alt || 'Imagem'}
-        className="rounded-2xl max-w-full h-auto my-6 shadow-md border border-emerald-100 object-cover mx-auto"
-        referrerPolicy="no-referrer"
-        loading="lazy"
-        {...props}
-      />
-    );
-  }
 };
 
 const Header = () => {
@@ -310,7 +277,7 @@ const NewsModal = ({ item, onClose }: { item: any, onClose: () => void }) => {
             </p>
           )}
           <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none">
-            <Markdown components={markdownComponents}>{item.content || ''}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{item.content || ''}</Markdown>
           </div>
           <div className="pt-6 border-t border-gray-100 flex justify-end">
             <button
@@ -432,7 +399,7 @@ const ArticleDetailPage = () => {
 
         {/* Content Body */}
         <div className="markdown-body prose prose-emerald prose-lg max-w-none text-gray-700 leading-relaxed border-b border-gray-100 pb-16">
-          <Markdown components={markdownComponents}>{article.content || ''}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
         </div>
 
         {/* Other Articles Recommendation */}
@@ -513,7 +480,7 @@ const EventModal = ({ event, onClose }: { event: any, onClose: () => void }) => 
             )}
           </div>
           <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none">
-            <Markdown components={markdownComponents}>{event.description || ''}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
           </div>
           <div className="pt-6 border-t border-gray-100 flex justify-end">
             <button
@@ -1082,9 +1049,17 @@ const InstitutionsPage = () => {
                 </div>
                 <div className="p-8 flex-grow">
                   <h3 className="text-2xl font-bold text-emerald-900 mb-3">{inst.name}</h3>
-                  <p className={cn("text-gray-600 mb-6", expandedId === inst.id ? "" : "line-clamp-3")}>
-                    {inst.description}
-                  </p>
+                  {expandedId === inst.id ? (
+                    <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none mb-6">
+                      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>
+                        {inst.description || ''}
+                      </Markdown>
+                    </div>
+                  ) : (
+                    <p className="text-gray-600 mb-6 line-clamp-3">
+                      {inst.description}
+                    </p>
+                  )}
                   
                   {expandedId === inst.id && (
                     <motion.div 
@@ -1095,38 +1070,58 @@ const InstitutionsPage = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {inst.email && (
                           <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Mail size={16} className="text-emerald-600" /> 
+                            <Mail size={16} className="text-emerald-600 shrink-0" /> 
                             <a href={`mailto:${inst.email}`} className="hover:text-emerald-600 transition-colors break-all">{inst.email}</a>
                           </div>
                         )}
                         {inst.socials?.instagram && (
                           <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Instagram size={16} className="text-emerald-600" /> 
-                            <a href={inst.socials.instagram.startsWith('http') ? inst.socials.instagram : `https://instagram.com/${inst.socials.instagram}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors break-all">
+                            <Instagram size={16} className="text-emerald-600 shrink-0" /> 
+                            <a 
+                              href={inst.socials.instagram.startsWith('http') ? inst.socials.instagram : `https://instagram.com/${inst.socials.instagram.replace(/^@/, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="hover:text-emerald-600 transition-colors break-all font-medium"
+                            >
                               {inst.socials.instagram}
                             </a>
                           </div>
                         )}
                         {inst.socials?.facebook && (
                           <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Facebook size={16} className="text-emerald-600" /> 
-                            <a href={inst.socials.facebook.startsWith('http') ? inst.socials.facebook : `https://facebook.com/${inst.socials.facebook}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors break-all">
+                            <Facebook size={16} className="text-emerald-600 shrink-0" /> 
+                            <a 
+                              href={inst.socials.facebook.startsWith('http') ? inst.socials.facebook : `https://${inst.socials.facebook.replace(/^(https?:\/\/)?/, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="hover:text-emerald-600 transition-colors break-all font-medium"
+                            >
                               {inst.socials.facebook}
                             </a>
                           </div>
                         )}
                         {inst.socials?.twitter && (
                           <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Twitter size={16} className="text-emerald-600" /> 
-                            <a href={inst.socials.twitter.startsWith('http') ? inst.socials.twitter : `https://twitter.com/${inst.socials.twitter}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors break-all">
+                            <Twitter size={16} className="text-emerald-600 shrink-0" /> 
+                            <a 
+                              href={inst.socials.twitter.startsWith('http') ? inst.socials.twitter : `https://twitter.com/${inst.socials.twitter.replace(/^@/, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="hover:text-emerald-600 transition-colors break-all font-medium"
+                            >
                               {inst.socials.twitter}
                             </a>
                           </div>
                         )}
                         {inst.socials?.youtube && (
                           <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Youtube size={16} className="text-emerald-600" /> 
-                            <a href={inst.socials.youtube.startsWith('http') ? inst.socials.youtube : `https://youtube.com/${inst.socials.youtube}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-600 transition-colors break-all">
+                            <Youtube size={16} className="text-emerald-600 shrink-0" /> 
+                            <a 
+                              href={inst.socials.youtube.startsWith('http') ? inst.socials.youtube : `https://${inst.socials.youtube.replace(/^(https?:\/\/)?/, '')}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="hover:text-emerald-600 transition-colors break-all font-medium"
+                            >
                               {inst.socials.youtube}
                             </a>
                           </div>
@@ -1135,12 +1130,13 @@ const InstitutionsPage = () => {
                       <div className="flex gap-4 pt-4">
                         {inst.website && (
                           <a 
-                            href={inst.website.startsWith('http://') || inst.website.startsWith('https://') ? inst.website : `https://${inst.website}`} 
+                            href={formatExternalUrl(inst.website).url} 
                             target="_blank" 
                             rel="noopener noreferrer" 
-                            className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700"
+                            className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 inline-flex items-center gap-1.5 transition-all shadow-xs"
                           >
-                            Visitar Site
+                            <span>Visitar Site</span>
+                            <Globe size={14} />
                           </a>
                         )}
                         <button 
@@ -1226,7 +1222,7 @@ const ArticlesPage = () => {
                       </h3>
                     )}
                     <div className="text-gray-600 leading-relaxed line-clamp-3 prose prose-sm prose-emerald">
-                      <Markdown components={markdownComponents}>{article.content || ''}</Markdown>
+                      <Markdown components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
                     </div>
                     <Link 
                       to={`/artigos/${article.id}`}
@@ -1407,7 +1403,7 @@ const EventsPage = () => {
                 <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors">{event.title}</h2>
                 {event.subtitle && <p className="text-emerald-600 font-medium mb-2">{event.subtitle}</p>}
                 <div className="text-gray-600 mb-4 prose prose-sm prose-emerald max-w-none line-clamp-3">
-                  <Markdown components={markdownComponents}>{event.description || ''}</Markdown>
+                  <Markdown components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
                   <div className="flex items-center gap-2 text-emerald-600 font-medium">
@@ -1470,7 +1466,7 @@ Em 21.09.2024, realiza-se a primeira de uma série de reuniões virtuais com a p
           <div className="w-20 h-1 bg-emerald-500 rounded-full mx-auto mt-6" />
         </header>
         <div className="markdown-body prose prose-emerald max-w-none prose-lg text-gray-700">
-          <Markdown components={markdownComponents}>{content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
         </div>
       </div>
     </div>
@@ -1545,7 +1541,7 @@ Assinam este documento:
     <div className="pt-40 pb-20 px-6 bg-white min-h-screen">
       <div className="max-w-4xl mx-auto">
         <div className="markdown-body prose prose-emerald max-w-none">
-          <Markdown components={markdownComponents}>{content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
         </div>
       </div>
     </div>

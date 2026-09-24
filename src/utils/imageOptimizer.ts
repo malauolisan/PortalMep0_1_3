@@ -43,7 +43,28 @@ export function formatBytes(bytes: number, decimals = 1): string {
 }
 
 /**
- * Checks if the browser supports canvas.toDataURL/toBlob with webp format
+ * Converts a base64 Data URL to a Blob safely and synchronously
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  try {
+    const parts = dataUrl.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    const byteString = atob(parts[1]);
+    const arrayBuffer = new ArrayBuffer(byteString.length);
+    const uint8Array = new Uint8Array(arrayBuffer);
+    for (let i = 0; i < byteString.length; i++) {
+      uint8Array[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([uint8Array], { type: mime });
+  } catch (err) {
+    console.error('[ImageOptimizer] Falha ao converter dataUrl em Blob:', err);
+    return new Blob([], { type: 'image/jpeg' });
+  }
+}
+
+/**
+ * Checks if the browser supports canvas.toDataURL with webp format
  */
 function checkWebPSupport(): boolean {
   try {
@@ -66,23 +87,25 @@ export function getFolderPresets(folder: string): { maxDimension: number; qualit
     case 'slides':
     case 'banners':
     case 'hero':
-      return { maxDimension: 1600, quality: 0.85 };
+      return { maxDimension: 1600, quality: 0.82 };
     case 'users':
     case 'avatars':
-      return { maxDimension: 400, quality: 0.85 };
+      return { maxDimension: 400, quality: 0.80 };
     case 'institutions':
-      return { maxDimension: 1000, quality: 0.82 };
+    case 'modules':
+      return { maxDimension: 1000, quality: 0.80 };
     case 'news':
     case 'articles':
     case 'events':
     default:
-      return { maxDimension: 1280, quality: 0.82 };
+      return { maxDimension: 1200, quality: 0.80 };
   }
 }
 
 /**
  * Optimizes an image client-side before upload.
  * Resizes large high-res photos to crisp web dimensions and encodes to lightweight WebP.
+ * Uses synchronous canvas export and timeout protection to prevent hanging.
  */
 export async function optimizeImage(
   file: File,
@@ -127,11 +150,11 @@ export async function optimizeImage(
   }
 
   // Determine preset defaults based on folder if provided
-  const preset = options.folder ? getFolderPresets(options.folder) : { maxDimension: 1280, quality: 0.82 };
+  const preset = options.folder ? getFolderPresets(options.folder) : { maxDimension: 1200, quality: 0.80 };
   const maxDim = options.maxDimension ?? preset.maxDimension;
   const quality = options.quality ?? preset.quality;
 
-  // Determine output format (WebP is standard, fallback to JPEG for older browsers)
+  // Determine target format
   let targetMime = 'image/jpeg';
   let targetExt = 'jpg';
 
@@ -147,113 +170,147 @@ export async function optimizeImage(
   }
 
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Erro ao ler arquivo de imagem.'));
-    reader.onload = () => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Formato de imagem inválido ou corrompido.'));
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
+    let objectUrl = '';
+    let hasResolved = false;
 
-        // Calculate proportional aspect ratio resize
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
+    // Safety timeout to prevent hanging forever on corrupted images
+    const timeoutId = setTimeout(() => {
+      if (!hasResolved) {
+        hasResolved = true;
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        reject(new Error('Tempo esgotado ao processar a imagem. Formato pode não ser suportado.'));
+      }
+    }, 8000);
 
-        // Draw image onto canvas
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d', { alpha: targetMime !== 'image/jpeg' });
-
-        if (!ctx) {
-          reject(new Error('Não foi possível inicializar o contexto gráfico.'));
-          return;
-        }
-
-        // Apply high quality smoothing
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-
-        // For JPEG, fill background with white to avoid transparent black artifacts
-        if (targetMime === 'image/jpeg') {
-          ctx.fillStyle = '#FFFFFF';
-          ctx.fillRect(0, 0, width, height);
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Convert to Blob
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              // Fallback to dataURL
-              const dataUrl = canvas.toDataURL(targetMime, quality);
-              const byteString = atob(dataUrl.split(',')[1]);
-              const mimeString = dataUrl.split(',')[0].split(':')[1].split(';')[0];
-              const ab = new ArrayBuffer(byteString.length);
-              const ia = new Uint8Array(ab);
-              for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-              }
-              const fallbackBlob = new Blob([ab], { type: mimeString });
-              const optimizedSize = fallbackBlob.size;
-              const reduction = Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100));
-
-              const cleanBaseName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-              const finalFileName = `${cleanBaseName}.${targetExt}`;
-
-              resolve({
-                blob: fallbackBlob,
-                dataUrl,
-                fileName: finalFileName,
-                stats: {
-                  originalSize,
-                  optimizedSize,
-                  reductionPercentage: reduction,
-                  width,
-                  height,
-                  mimeType: targetMime,
-                },
-              });
-              return;
-            }
-
-            const dataUrl = canvas.toDataURL(targetMime, quality);
-            const optimizedSize = blob.size;
-            const reduction = Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100));
-
-            const cleanBaseName = file.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_');
-            const finalFileName = `${cleanBaseName}.${targetExt}`;
-
-            resolve({
-              blob,
-              dataUrl,
-              fileName: finalFileName,
-              stats: {
-                originalSize,
-                optimizedSize,
-                reductionPercentage: reduction,
-                width,
-                height,
-                mimeType: targetMime,
-              },
-            });
-          },
-          targetMime,
-          quality
-        );
+    try {
+      objectUrl = URL.createObjectURL(file);
+    } catch {
+      // Fallback to FileReader if createObjectURL fails
+      const reader = new FileReader();
+      reader.onload = () => processImageData(reader.result as string);
+      reader.onerror = () => {
+        clearTimeout(timeoutId);
+        reject(new Error('Erro ao ler o arquivo de imagem.'));
       };
-      img.src = reader.result as string;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const processImageData = (src: string) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      img.onload = () => {
+        if (hasResolved) return;
+        clearTimeout(timeoutId);
+        if (objectUrl) {
+          try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
+        }
+
+        try {
+          let width = img.naturalWidth || img.width;
+          let height = img.naturalHeight || img.height;
+
+          if (width === 0 || height === 0) {
+            hasResolved = true;
+            reject(new Error('Dimensões da imagem inválidas.'));
+            return;
+          }
+
+          // Calculate proportional aspect ratio resize
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          // Draw image onto canvas
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d', { alpha: targetMime !== 'image/jpeg' });
+
+          if (!ctx) {
+            hasResolved = true;
+            reject(new Error('Não foi possível inicializar o renderizador de imagem.'));
+            return;
+          }
+
+          // High quality smoothing
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          // For JPEG, fill background with white to avoid transparent black background
+          if (targetMime === 'image/jpeg') {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+          }
+
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Synchronous export via toDataURL (rock-solid across all browsers)
+          let dataUrl = canvas.toDataURL(targetMime, quality);
+          let actualMime = targetMime;
+
+          // If browser does not support WebP encoding, fallback to JPEG
+          if (targetMime === 'image/webp' && !dataUrl.startsWith('data:image/webp')) {
+            targetMime = 'image/jpeg';
+            targetExt = 'jpg';
+            actualMime = 'image/jpeg';
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+
+          const blob = dataUrlToBlob(dataUrl);
+          const optimizedSize = blob.size;
+          const reduction = Math.max(0, Math.round(((originalSize - optimizedSize) / originalSize) * 100));
+
+          const cleanBaseName = file.name
+            .replace(/\.[^/.]+$/, '')
+            .replace(/[^a-zA-Z0-9_-]/g, '_')
+            .substring(0, 40);
+          const finalFileName = `${cleanBaseName || 'imagem'}.${targetExt}`;
+
+          hasResolved = true;
+          resolve({
+            blob,
+            dataUrl,
+            fileName: finalFileName,
+            stats: {
+              originalSize,
+              optimizedSize,
+              reductionPercentage: reduction,
+              width,
+              height,
+              mimeType: actualMime,
+            },
+          });
+        } catch (canvasErr) {
+          hasResolved = true;
+          reject(canvasErr);
+        }
+      };
+
+      img.onerror = () => {
+        if (hasResolved) return;
+        clearTimeout(timeoutId);
+        if (objectUrl) {
+          try { URL.revokeObjectURL(objectUrl); } catch { /* ignore */ }
+        }
+        hasResolved = true;
+        reject(new Error('Não foi possível ler os dados da imagem. Verifique se o arquivo não está corrompido.'));
+      };
+
+      img.src = src;
     };
-    reader.readAsDataURL(file);
+
+    processImageData(objectUrl);
   });
 }
 
@@ -268,28 +325,37 @@ function fileToDataUrl(file: File): Promise<string> {
 
 /**
  * Uploads an optimized image to Firebase Storage with automatic client-side compression
- * and fallback to lightweight inline dataUrl if Storage is not configured.
+ * and fallback to lightweight inline dataUrl if Storage is not configured, slow or blocked by CORS.
+ * Strict timeout prevents the UI from ever hanging in "Otimizando..." state.
  */
 export async function uploadOptimizedImage(
   file: File,
   folder: string,
   options: OptimizeOptions = {}
 ): Promise<UploadResult> {
-  // 1. Optimize image in-memory first (blazing fast, ~100ms)
+  // 1. Optimize image in-memory first (instant, ~50ms)
   const optimized = await optimizeImage(file, { ...options, folder });
 
-  // 2. Try Firebase Storage with the compressed Blob
+  // 2. Try Firebase Storage with a strict 2-second timeout to avoid any hang
   try {
     const timestamp = Date.now();
     const safePath = `${folder}/${timestamp}_${optimized.fileName}`;
     const storageRef = ref(storage, safePath);
 
-    await uploadBytes(storageRef, optimized.blob, {
-      contentType: optimized.stats.mimeType,
-      cacheControl: 'public, max-age=31536000, immutable',
-    });
+    const uploadAction = async () => {
+      await uploadBytes(storageRef, optimized.blob, {
+        contentType: optimized.stats.mimeType,
+        cacheControl: 'public, max-age=31536000, immutable',
+      });
+      return await getDownloadURL(storageRef);
+    };
 
-    const downloadUrl = await getDownloadURL(storageRef);
+    // Strict 2000ms timeout guard
+    const timeoutGuard = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase Storage timeout')), 2000)
+    );
+
+    const downloadUrl = await Promise.race([uploadAction(), timeoutGuard]);
     if (downloadUrl) {
       return {
         url: downloadUrl,
@@ -298,8 +364,8 @@ export async function uploadOptimizedImage(
       };
     }
   } catch (storageError) {
-    console.warn(
-      `[ImageOptimizer] Firebase Storage indisponível para '${folder}', utilizando formato comprimido otimizado (${optimized.stats.mimeType}):`,
+    console.info(
+      `[ImageOptimizer] Armazenamento externo em nuvem indisponível ou lento para '${folder}'. Usando imagem otimizada ultraleve (${optimized.stats.mimeType}):`,
       storageError
     );
   }

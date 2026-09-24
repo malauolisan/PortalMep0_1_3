@@ -38,7 +38,9 @@ import {
   Sparkles,
   UploadCloud,
   CheckCircle2,
-  Loader2
+  Loader2,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useContent } from './ContentContext';
@@ -49,9 +51,13 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { signOut } from 'firebase/auth';
 import { cn } from './lib/utils';
 import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { News, Event, Institution, Article, UserProfile, Slide, FeaturedModule } from './types';
 import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules } from './data';
 import { uploadOptimizedImage, formatBytes, ImageOptimizationStats, optimizeImage } from './utils/imageOptimizer';
+import { customUrlTransform, markdownComponents, formatExternalUrl } from './utils/linkUtils';
+
+export { customUrlTransform, markdownComponents, formatExternalUrl };
 
 // --- Markdown Toolbar ---
 
@@ -221,42 +227,6 @@ const ShareModal = ({
   );
 };
 
-export const markdownComponents = {
-  a: ({ node, href, children, ...props }: any) => {
-    const safeHref = href || '#';
-    const isExternal = safeHref.startsWith('http://') || safeHref.startsWith('https://') || safeHref.startsWith('//') || safeHref.startsWith('mailto:');
-    return (
-      <a
-        href={safeHref}
-        target={isExternal ? '_blank' : undefined}
-        rel={isExternal ? 'noopener noreferrer' : undefined}
-        className="text-emerald-600 underline hover:text-emerald-800 transition-colors cursor-pointer break-words font-medium"
-        onClick={(e) => {
-          if (!safeHref || safeHref === '#') {
-            e.preventDefault();
-          }
-        }}
-        {...props}
-      >
-        {children}
-      </a>
-    );
-  },
-  img: ({ node, src, alt, ...props }: any) => {
-    if (!src) return null;
-    return (
-      <img
-        src={src}
-        alt={alt || 'Imagem'}
-        className="rounded-2xl max-w-full h-auto my-4 shadow-md border border-emerald-100 object-cover mx-auto"
-        referrerPolicy="no-referrer"
-        loading="lazy"
-        {...props}
-      />
-    );
-  }
-};
-
 const MarkdownToolbar = ({ 
   textareaRef, 
   content = '', 
@@ -270,6 +240,17 @@ const MarkdownToolbar = ({
 }) => {
   const [uploadingInline, setUploadingInline] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  // Link Dialog State
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [linkText, setLinkText] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkSelection, setLinkSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+
+  // Image by Link Dialog State
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState('');
+  const [imageAlt, setImageAlt] = useState('');
 
   const insertText = (before: string, after: string = '') => {
     const textarea = textareaRef.current;
@@ -289,6 +270,76 @@ const MarkdownToolbar = ({
       const newPos = start + before.length + (selectedText ? selectedText.length + after.length : 0);
       textarea.setSelectionRange(newPos, newPos);
     }, 0);
+  };
+
+  const handleOpenLinkModal = () => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? 0;
+    const end = textarea?.selectionEnd ?? 0;
+    const currentContent = typeof content === 'string' ? content : '';
+    const selected = currentContent.substring(start, end).trim();
+
+    setLinkSelection({ start, end });
+
+    if (/^https?:\/\//i.test(selected) || /^www\./i.test(selected)) {
+      setLinkText(selected);
+      setLinkUrl(selected);
+    } else if (selected) {
+      setLinkText(selected);
+      setLinkUrl('');
+    } else {
+      setLinkText('');
+      setLinkUrl('');
+    }
+    setIsLinkModalOpen(true);
+  };
+
+  const handleConfirmInsertLink = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedUrl = linkUrl.trim();
+    if (!trimmedUrl) {
+      alert('Por favor, informe o endereço web (URL) de destino do link.');
+      return;
+    }
+
+    const { url: formattedUrl } = formatExternalUrl(trimmedUrl, linkText);
+    const finalUrl = formattedUrl && formattedUrl !== '#' ? formattedUrl : (trimmedUrl.startsWith('http') ? trimmedUrl : `https://${trimmedUrl}`);
+    const finalText = (linkText.trim()) || finalUrl;
+
+    const textarea = textareaRef.current;
+    const currentContent = typeof content === 'string' ? content : '';
+    const start = linkSelection.start;
+    const end = linkSelection.end;
+
+    const markdownLink = `[${finalText}](${finalUrl})`;
+    const newText = currentContent.substring(0, start) + markdownLink + currentContent.substring(end);
+
+    setContent(newText);
+    setIsLinkModalOpen(false);
+    setLinkText('');
+    setLinkUrl('');
+
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const pos = start + markdownLink.length;
+        textarea.setSelectionRange(pos, pos);
+      }
+    }, 0);
+  };
+
+  const handleConfirmInsertImage = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedUrl = imageUrl.trim();
+    if (!trimmedUrl) {
+      alert('Por favor, informe a URL da imagem.');
+      return;
+    }
+    const alt = imageAlt.trim() || 'Imagem';
+    insertText(`\n\n![${alt}](${trimmedUrl})\n\n`, '');
+    setIsImageModalOpen(false);
+    setImageUrl('');
+    setImageAlt('');
   };
 
   const handleInlineImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -326,68 +377,225 @@ const MarkdownToolbar = ({
     { icon: Code, label: 'Código', action: () => insertText('`', '`') },
     { 
       icon: LinkIcon, 
-      label: 'Link', 
-      action: () => {
-        const textarea = textareaRef.current;
-        const start = textarea?.selectionStart ?? 0;
-        const end = textarea?.selectionEnd ?? 0;
-        const currentContent = typeof content === 'string' ? content : '';
-        const selectedText = currentContent.substring(start, end);
-        if (selectedText.startsWith('http://') || selectedText.startsWith('https://')) {
-          insertText('[Link](', ')');
-        } else {
-          insertText('[', '](https://)');
-        }
-      } 
+      label: 'Inserir Link Externo ou Interno', 
+      action: handleOpenLinkModal 
     },
-    { icon: ImageIcon, label: 'Inserir Imagem por Link', action: () => insertText('![alt](', ')') },
+    { 
+      icon: ImageIcon, 
+      label: 'Inserir Imagem por Link', 
+      action: () => setIsImageModalOpen(true) 
+    },
   ];
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-gray-100 border-b border-gray-200 rounded-t-2xl">
-      <div className="flex flex-wrap items-center gap-1">
-        {tools.map((tool, i) => (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-gray-100 border-b border-gray-200 rounded-t-2xl">
+        <div className="flex flex-wrap items-center gap-1">
+          {tools.map((tool, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={tool.action}
+              title={tool.label}
+              className="p-2 hover:bg-white hover:text-emerald-600 rounded-lg transition-colors text-gray-500 cursor-pointer"
+            >
+              <tool.icon size={16} />
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            accept="image/*" 
+            onChange={handleInlineImageUpload} 
+            className="hidden" 
+          />
           <button
-            key={i}
             type="button"
-            onClick={tool.action}
-            title={tool.label}
-            className="p-2 hover:bg-white hover:text-emerald-600 rounded-lg transition-colors text-gray-500"
+            disabled={uploadingInline}
+            onClick={() => fileInputRef.current?.click()}
+            title="Fazer upload de imagem otimizada para o texto"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all border border-emerald-200 disabled:opacity-50 cursor-pointer"
           >
-            <tool.icon size={16} />
+            {uploadingInline ? (
+              <>
+                <Loader2 size={14} className="animate-spin text-emerald-600" />
+                <span>Otimizando...</span>
+              </>
+            ) : (
+              <>
+                <UploadCloud size={14} />
+                <span>Inserir Imagem (Upload)</span>
+              </>
+            )}
           </button>
-        ))}
+        </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          accept="image/*" 
-          onChange={handleInlineImageUpload} 
-          className="hidden" 
-        />
-        <button
-          type="button"
-          disabled={uploadingInline}
-          onClick={() => fileInputRef.current?.click()}
-          title="Fazer upload de imagem otimizada para o texto"
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all border border-emerald-200 disabled:opacity-50"
-        >
-          {uploadingInline ? (
-            <>
-              <Loader2 size={14} className="animate-spin text-emerald-600" />
-              <span>Otimizando...</span>
-            </>
-          ) : (
-            <>
-              <UploadCloud size={14} />
-              <span>Inserir Imagem (Upload)</span>
-            </>
-          )}
-        </button>
-      </div>
-    </div>
+      {/* Interactive Link Insertion Modal */}
+      {isLinkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                  <LinkIcon size={18} />
+                </div>
+                <span>Inserir Link na Publicação</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLinkModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmInsertLink} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                  Texto Visível do Link
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={linkText}
+                  onChange={(e) => setLinkText(e.target.value)}
+                  placeholder="Ex: Leia a matéria completa no site oficial"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+                <span className="text-[11px] text-gray-500 mt-1 block">
+                  O texto que o leitor verá na postagem. Se deixar em branco, usará a própria URL.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                  Endereço Web (URL de Destino) *
+                </label>
+                <input
+                  type="text"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  placeholder="Ex: https://www.exemplo.com.br ou www.globo.com"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                />
+                <span className="text-[11px] text-emerald-700 mt-1 block">
+                  Dica: Se digitar sem https://, o portal incluirá o protocolo automaticamente.
+                </span>
+              </div>
+
+              {linkUrl.trim() && (
+                <div className="p-3 bg-emerald-50 rounded-xl text-xs border border-emerald-100 text-emerald-900">
+                  <span className="font-bold block mb-1">Como vai ficar no texto:</span>
+                  <span className="text-emerald-700 underline font-medium">
+                    {linkText.trim() || linkUrl.trim()}
+                  </span>
+                  <span className="text-gray-500 ml-1">
+                    ↗ ({linkUrl.startsWith('http') ? linkUrl : `https://${linkUrl}`})
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLinkModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check size={16} />
+                  <span>Inserir Link</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Image by URL Modal */}
+      {isImageModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div 
+            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
+              <div className="flex items-center gap-2 text-emerald-800 font-bold">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
+                  <ImageIcon size={18} />
+                </div>
+                <span>Inserir Imagem por Link</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsImageModalOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmInsertImage} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                  Endereço da Imagem (URL) *
+                </label>
+                <input
+                  type="url"
+                  autoFocus
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  placeholder="https://exemplo.com/foto.jpg"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                  Legenda / Texto Alternativo
+                </label>
+                <input
+                  type="text"
+                  value={imageAlt}
+                  onChange={(e) => setImageAlt(e.target.value)}
+                  placeholder="Ex: Foto do encontro espírita"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => setIsImageModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check size={16} />
+                  <span>Inserir Imagem</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
@@ -1193,7 +1401,7 @@ export const ManageNews = () => {
                 <Edit size={16} /> Preview do Conteúdo
               </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown components={markdownComponents}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
               </div>
             </div>
           </div>
@@ -1385,6 +1593,15 @@ export const ManageEvents = () => {
               >
                 <Save size={20} /> {saving ? 'Salvando...' : (editing ? 'Salvar Alterações' : 'Criar Evento')}
               </button>
+            </div>
+
+            <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+              <h4 className="text-sm font-bold text-emerald-900 mb-3 flex items-center gap-2">
+                <Edit size={16} /> Preview da Descrição
+              </h4>
+              <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
+              </div>
             </div>
           </div>
         </form>
@@ -1578,6 +1795,15 @@ export const ManageInstitutions = () => {
                 <Save size={20} /> {saving ? 'Salvando...' : (editing ? 'Salvar Alterações' : 'Cadastrar Instituição')}
               </button>
             </div>
+
+            <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
+              <h4 className="text-sm font-bold text-emerald-900 mb-3 flex items-center gap-2">
+                <Edit size={16} /> Preview da Descrição
+              </h4>
+              <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
+              </div>
+            </div>
           </div>
         </form>
       </div>
@@ -1763,9 +1989,11 @@ export const ManageArticles = () => {
               </button>
             </div>
             <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
-              <h4 className="text-sm font-bold text-emerald-900 mb-3">Preview</h4>
+              <h4 className="text-sm font-bold text-emerald-900 mb-3 flex items-center gap-2">
+                <Edit size={16} /> Preview do Artigo
+              </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown components={markdownComponents}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
               </div>
             </div>
           </div>
