@@ -41,7 +41,10 @@ import {
   CheckCircle2,
   Loader2,
   X,
-  ExternalLink
+  ExternalLink,
+  ArrowUpDown,
+  ArrowDownAZ,
+  ArrowUpZA
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useContent } from './ContentContext';
@@ -1188,9 +1191,24 @@ const ContentList = <T extends { id: string, title?: string, name?: string, date
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortOrder, setSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const itemsPerPage = 10;
 
-  const filteredItems = items.filter(item => 
+  const sortedItems = [...items].sort((a, b) => {
+    if (sortOrder === 'asc') {
+      const nameA = a.name || a.title || '';
+      const nameB = b.name || b.title || '';
+      return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
+    }
+    if (sortOrder === 'desc') {
+      const nameA = a.name || a.title || '';
+      const nameB = b.name || b.title || '';
+      return nameB.localeCompare(nameA, 'pt-BR', { sensitivity: 'base' });
+    }
+    return 0;
+  });
+
+  const filteredItems = sortedItems.filter(item => 
     (item.title || item.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -1198,10 +1216,10 @@ const ContentList = <T extends { id: string, title?: string, name?: string, date
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentItems = filteredItems.slice(startIndex, startIndex + itemsPerPage);
 
-  // Reset to page 1 when searching
+  // Reset to page 1 when searching or sorting
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, sortOrder]);
 
   return (
     <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
@@ -1212,27 +1230,57 @@ const ContentList = <T extends { id: string, title?: string, name?: string, date
         title="Confirmar Exclusão"
         message="Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita."
       />
-      <div className="p-6 border-b border-gray-50 flex items-center justify-between bg-gray-50/50">
+      <div className="p-6 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
         <div className="flex items-center gap-3">
           <Icon className="text-emerald-600" size={20} />
           <h3 className="font-bold text-emerald-950">{title}</h3>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input 
-            type="text" 
-            placeholder="Buscar..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none w-64"
-          />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSortOrder(prev => prev === 'default' ? 'asc' : prev === 'asc' ? 'desc' : 'default')}
+            className={cn(
+              "px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border cursor-pointer",
+              sortOrder !== 'default'
+                ? "bg-emerald-50 text-emerald-800 border-emerald-300 shadow-xs"
+                : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+            )}
+            title="Ordenar Alfabeticamente (A-Z / Z-A / Padrão)"
+          >
+            {sortOrder === 'asc' ? <ArrowDownAZ size={15} className="text-emerald-600" /> :
+             sortOrder === 'desc' ? <ArrowUpZA size={15} className="text-emerald-600" /> :
+             <ArrowUpDown size={15} className="text-gray-400" />}
+            <span className="hidden sm:inline">
+              {sortOrder === 'asc' ? 'A - Z' : sortOrder === 'desc' ? 'Z - A' : 'Ordem Alfabética'}
+            </span>
+          </button>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+            <input 
+              type="text" 
+              placeholder="Buscar..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none w-48 sm:w-64"
+            />
+          </div>
         </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
             <tr className="text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-50">
-              <th className="px-6 py-4 font-bold">Título/Nome</th>
+              <th 
+                className="px-6 py-4 font-bold cursor-pointer select-none hover:text-emerald-700 transition-colors"
+                onClick={() => setSortOrder(prev => prev === 'default' ? 'asc' : prev === 'asc' ? 'desc' : 'default')}
+                title="Clique para ordenar alfabeticamente"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>Título/Nome</span>
+                  {sortOrder === 'asc' && <ArrowDownAZ size={13} className="text-emerald-600" />}
+                  {sortOrder === 'desc' && <ArrowUpZA size={13} className="text-emerald-600" />}
+                  {sortOrder === 'default' && <ArrowUpDown size={13} className="opacity-40" />}
+                </div>
+              </th>
               <th className="px-6 py-4 font-bold">Data</th>
               <th className="px-6 py-4 font-bold text-right">Ações</th>
             </tr>

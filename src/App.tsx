@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate } from 'react-router-dom';
-import { Menu, X, Facebook, Instagram, Youtube, Mail, Phone, MapPin, ChevronRight, ChevronDown, Calendar, Clock, Twitter, Globe, ArrowRight, ArrowLeft, Share2, Check, Edit, Save, Plus, Trash2, LogOut, User } from 'lucide-react';
+import { Menu, X, Facebook, Instagram, Youtube, Mail, Phone, MapPin, ChevronRight, ChevronDown, Calendar, Clock, Twitter, Globe, ArrowRight, ArrowLeft, Share2, Check, Edit, Save, Plus, Trash2, LogOut, User, Search, ArrowUpDown, ArrowDownAZ, ArrowUpZA, RotateCcw, Filter, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { mockNews, mockEvents, mockInstitutions, mockArticles } from './data';
@@ -1017,160 +1017,367 @@ const HomePage = () => (
 const InstitutionsPage = () => {
   const { institutions } = useContent();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc' | 'default'>('asc');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
+
   const displayInstitutions = institutions.length > 0 ? institutions : mockInstitutions;
+
+  const normalizeText = (text: string) => 
+    text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+  const availableLetters = useMemo(() => {
+    const letters = new Set<string>();
+    displayInstitutions.forEach(inst => {
+      const firstChar = normalizeText((inst.name || '').trim()).charAt(0).toUpperCase();
+      if (firstChar && firstChar >= 'A' && firstChar <= 'Z') {
+        letters.add(firstChar);
+      }
+    });
+    return letters;
+  }, [displayInstitutions]);
+
+  const filteredAndSortedInstitutions = useMemo(() => {
+    const result = displayInstitutions.filter((inst) => {
+      const nameNorm = normalizeText(inst.name || '');
+      const descNorm = normalizeText(inst.description || '');
+      const query = normalizeText(searchTerm.trim());
+      const matchesSearch = !query || nameNorm.includes(query) || descNorm.includes(query);
+      
+      const firstChar = nameNorm.charAt(0).toUpperCase();
+      const matchesLetter = !selectedLetter || firstChar === selectedLetter;
+      
+      return matchesSearch && matchesLetter;
+    });
+
+    if (sortOrder === 'asc') {
+      result.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' }));
+    } else if (sortOrder === 'desc') {
+      result.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'pt-BR', { sensitivity: 'base' }));
+    }
+
+    return result;
+  }, [displayInstitutions, searchTerm, selectedLetter, sortOrder]);
+
+  const hasActiveFilters = searchTerm.trim() !== '' || selectedLetter !== null || sortOrder !== 'asc';
+
+  const handleResetFilters = () => {
+    setSearchTerm('');
+    setSelectedLetter(null);
+    setSortOrder('asc');
+  };
 
   return (
     <div className="pt-32 pb-20 px-6 bg-emerald-50/30 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <header className="mb-12 text-center">
+        <header className="mb-10 text-center">
           <h1 className="text-4xl md:text-5xl font-serif text-emerald-900 mb-4">Instituições Agregadas</h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto italic">
             Conheça as casas e grupos que compõem o Movimento Espírita Progressista.
           </p>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {displayInstitutions.map((inst) => (
-            <motion.div
-              key={inst.id}
-              layout
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+        {/* Visualization Filters */}
+        <div className="bg-white rounded-3xl p-6 shadow-sm border border-emerald-100 mb-10 space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-600/60" size={18} />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Buscar instituição por nome ou descrição..."
+                className="w-full pl-10 pr-10 py-2.5 bg-emerald-50/40 border border-emerald-100 rounded-2xl text-sm focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+              />
+              {searchTerm && (
+                <button 
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 cursor-pointer"
+                  title="Limpar busca"
+                >
+                  <X size={15} />
+                </button>
+              )}
+            </div>
+
+            {/* Sort Options */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mr-1">
+                <Filter size={14} className="text-emerald-600" />
+                Ordem:
+              </span>
+              
+              <button
+                onClick={() => setSortOrder('asc')}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                  sortOrder === 'asc'
+                    ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600"
+                    : "bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60"
+                )}
+                title="Ordem alfabética de A a Z"
+              >
+                <ArrowDownAZ size={15} />
+                <span>Alfabética (A - Z)</span>
+              </button>
+
+              <button
+                onClick={() => setSortOrder('desc')}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                  sortOrder === 'desc'
+                    ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600"
+                    : "bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60"
+                )}
+                title="Ordem alfabética de Z a A"
+              >
+                <ArrowUpZA size={15} />
+                <span>Alfabética (Z - A)</span>
+              </button>
+
+              <button
+                onClick={() => setSortOrder('default')}
+                className={cn(
+                  "px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer",
+                  sortOrder === 'default'
+                    ? "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-600"
+                    : "bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100 border border-emerald-200/60"
+                )}
+                title="Ordem padrão de cadastro"
+              >
+                <span>Padrão</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Letter filter bar (A-Z) */}
+          <div className="pt-4 border-t border-emerald-50 flex flex-wrap items-center gap-1.5">
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mr-2">
+              Letra inicial:
+            </span>
+            <button
+              onClick={() => setSelectedLetter(null)}
               className={cn(
-                "bg-white rounded-3xl shadow-md overflow-hidden border border-emerald-100 transition-all",
-                expandedId === inst.id ? "md:col-span-2 lg:col-span-2 ring-2 ring-emerald-500" : "hover:shadow-xl"
+                "px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer",
+                selectedLetter === null
+                  ? "bg-emerald-700 text-white shadow-xs"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               )}
             >
-              <div className={cn("flex flex-col", expandedId === inst.id ? "md:flex-row" : "")}>
-                <div className={cn("relative bg-emerald-50", expandedId === inst.id ? "md:w-1/2 h-64 md:h-auto" : "h-48")}>
-                  {inst.image ? (
-                    <img 
-                      src={inst.image} 
-                      alt={inst.name} 
-                      className="absolute inset-0 w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center bg-emerald-100 text-emerald-800 font-serif font-bold text-lg p-4 text-center">
-                      {inst.name}
-                    </div>
+              Todas
+            </button>
+            {alphabet.map((letter) => {
+              const hasItems = availableLetters.has(letter);
+              const isSelected = selectedLetter === letter;
+              return (
+                <button
+                  key={letter}
+                  onClick={() => setSelectedLetter(isSelected ? null : letter)}
+                  disabled={!hasItems}
+                  className={cn(
+                    "w-7 h-7 rounded-lg text-xs font-bold transition-all flex items-center justify-center cursor-pointer",
+                    isSelected
+                      ? "bg-emerald-600 text-white shadow-xs ring-2 ring-emerald-400"
+                      : hasItems
+                      ? "bg-emerald-50 text-emerald-900 hover:bg-emerald-200 border border-emerald-200/80"
+                      : "bg-gray-50/60 text-gray-300 cursor-not-allowed border border-gray-100"
                   )}
-                </div>
-                <div className="p-8 flex-grow">
-                  <h3 className="text-2xl font-bold text-emerald-900 mb-3">{inst.name}</h3>
-                  {expandedId === inst.id ? (
-                    <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none mb-6">
-                      <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>
-                        {inst.description || ''}
-                      </Markdown>
-                    </div>
-                  ) : (
-                    <p className="text-gray-600 mb-6 line-clamp-3">
-                      {inst.description}
-                    </p>
-                  )}
-                  
-                  {expandedId === inst.id && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="space-y-4 border-t border-emerald-50 pt-6"
-                    >
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {inst.email && (
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Mail size={16} className="text-emerald-600 shrink-0" /> 
-                            <a href={`mailto:${inst.email}`} className="hover:text-emerald-600 transition-colors break-all">{inst.email}</a>
-                          </div>
-                        )}
-                        {inst.socials?.instagram && (
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Instagram size={16} className="text-emerald-600 shrink-0" /> 
-                            <a 
-                              href={inst.socials.instagram.startsWith('http') ? inst.socials.instagram : `https://instagram.com/${inst.socials.instagram.replace(/^@/, '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="hover:text-emerald-600 transition-colors break-all font-medium"
-                            >
-                              {inst.socials.instagram}
-                            </a>
-                          </div>
-                        )}
-                        {inst.socials?.facebook && (
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Facebook size={16} className="text-emerald-600 shrink-0" /> 
-                            <a 
-                              href={inst.socials.facebook.startsWith('http') ? inst.socials.facebook : `https://${inst.socials.facebook.replace(/^(https?:\/\/)?/, '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="hover:text-emerald-600 transition-colors break-all font-medium"
-                            >
-                              {inst.socials.facebook}
-                            </a>
-                          </div>
-                        )}
-                        {inst.socials?.twitter && (
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Twitter size={16} className="text-emerald-600 shrink-0" /> 
-                            <a 
-                              href={inst.socials.twitter.startsWith('http') ? inst.socials.twitter : `https://twitter.com/${inst.socials.twitter.replace(/^@/, '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="hover:text-emerald-600 transition-colors break-all font-medium"
-                            >
-                              {inst.socials.twitter}
-                            </a>
-                          </div>
-                        )}
-                        {inst.socials?.youtube && (
-                          <div className="flex items-center gap-2 text-sm text-gray-700">
-                            <Youtube size={16} className="text-emerald-600 shrink-0" /> 
-                            <a 
-                              href={inst.socials.youtube.startsWith('http') ? inst.socials.youtube : `https://${inst.socials.youtube.replace(/^(https?:\/\/)?/, '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="hover:text-emerald-600 transition-colors break-all font-medium"
-                            >
-                              {inst.socials.youtube}
-                            </a>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-4 pt-4">
-                        {inst.website && (
-                          <a 
-                            href={formatExternalUrl(inst.website).url} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 inline-flex items-center gap-1.5 transition-all shadow-xs"
-                          >
-                            <span>Visitar Site</span>
-                            <Globe size={14} />
-                          </a>
-                        )}
-                        <button 
-                          onClick={() => setExpandedId(null)}
-                          className="px-6 py-2 border border-emerald-200 text-emerald-700 rounded-full text-sm font-bold hover:bg-emerald-50"
-                        >
-                          Fechar
-                        </button>
-                      </div>
-                    </motion.div>
-                  )}
+                  title={hasItems ? `Filtrar por instituições iniciando com ${letter}` : `Nenhuma instituição com a letra ${letter}`}
+                >
+                  {letter}
+                </button>
+              );
+            })}
+          </div>
 
-                  {expandedId !== inst.id && (
-                    <button 
-                      onClick={() => setExpandedId(inst.id)}
-                      className="text-emerald-600 font-bold text-sm flex items-center gap-1 hover:gap-2 transition-all"
-                    >
-                      Ver detalhes <ArrowRight size={16} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          ))}
+          {/* Filter status & counter bar */}
+          <div className="pt-3 border-t border-emerald-50 flex items-center justify-between text-xs text-gray-600">
+            <div>
+              Exibindo <span className="font-bold text-emerald-900">{filteredAndSortedInstitutions.length}</span> {filteredAndSortedInstitutions.length === 1 ? 'instituição' : 'instituições'}
+              {hasActiveFilters && (
+                <span className="ml-1 text-emerald-700">
+                  (de um total de {displayInstitutions.length})
+                </span>
+              )}
+            </div>
+
+            {hasActiveFilters && (
+              <button
+                onClick={handleResetFilters}
+                className="text-emerald-700 hover:text-emerald-900 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw size={13} />
+                Limpar filtros
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Institutions Grid or Empty State */}
+        {filteredAndSortedInstitutions.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center border border-emerald-100 shadow-sm max-w-lg mx-auto">
+            <div className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-emerald-600">
+              <Search size={28} />
+            </div>
+            <h3 className="text-xl font-bold text-emerald-950 mb-2">Nenhuma instituição encontrada</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Não encontramos nenhuma instituição correspondente aos filtros selecionados.
+            </p>
+            <button
+              onClick={handleResetFilters}
+              className="px-6 py-2.5 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
+            >
+              <RotateCcw size={16} />
+              Restaurar todas as instituições
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredAndSortedInstitutions.map((inst) => (
+              <motion.div
+                key={inst.id}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={cn(
+                  "bg-white rounded-3xl shadow-md overflow-hidden border border-emerald-100 transition-all",
+                  expandedId === inst.id ? "md:col-span-2 lg:col-span-2 ring-2 ring-emerald-500" : "hover:shadow-xl"
+                )}
+              >
+                <div className={cn("flex flex-col", expandedId === inst.id ? "md:flex-row" : "")}>
+                  <div className={cn("relative bg-emerald-50", expandedId === inst.id ? "md:w-1/2 h-64 md:h-auto" : "h-48")}>
+                    {inst.image ? (
+                      <img 
+                        src={inst.image} 
+                        alt={inst.name} 
+                        className="absolute inset-0 w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center bg-emerald-100 text-emerald-800 font-serif font-bold text-lg p-4 text-center">
+                        {inst.name}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-8 flex-grow">
+                    <h3 className="text-2xl font-bold text-emerald-900 mb-3">{inst.name}</h3>
+                    {expandedId === inst.id ? (
+                      <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none mb-6">
+                        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>
+                          {inst.description || ''}
+                        </Markdown>
+                      </div>
+                    ) : (
+                      <p className="text-gray-600 mb-6 line-clamp-3">
+                        {inst.description}
+                      </p>
+                    )}
+                    
+                    {expandedId === inst.id && (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="space-y-4 border-t border-emerald-50 pt-6"
+                      >
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {inst.email && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Mail size={16} className="text-emerald-600 shrink-0" /> 
+                              <a href={`mailto:${inst.email}`} className="hover:text-emerald-600 transition-colors break-all">{inst.email}</a>
+                            </div>
+                          )}
+                          {inst.socials?.instagram && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Instagram size={16} className="text-emerald-600 shrink-0" /> 
+                              <a 
+                                href={inst.socials.instagram.startsWith('http') ? inst.socials.instagram : `https://instagram.com/${inst.socials.instagram.replace(/^@/, '')}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="hover:text-emerald-600 transition-colors break-all font-medium"
+                              >
+                                {inst.socials.instagram}
+                              </a>
+                            </div>
+                          )}
+                          {inst.socials?.facebook && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Facebook size={16} className="text-emerald-600 shrink-0" /> 
+                              <a 
+                                href={inst.socials.facebook.startsWith('http') ? inst.socials.facebook : `https://${inst.socials.facebook.replace(/^(https?:\/\/)?/, '')}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="hover:text-emerald-600 transition-colors break-all font-medium"
+                              >
+                                {inst.socials.facebook}
+                              </a>
+                            </div>
+                          )}
+                          {inst.socials?.twitter && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Twitter size={16} className="text-emerald-600 shrink-0" /> 
+                              <a 
+                                href={inst.socials.twitter.startsWith('http') ? inst.socials.twitter : `https://twitter.com/${inst.socials.twitter.replace(/^@/, '')}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="hover:text-emerald-600 transition-colors break-all font-medium"
+                              >
+                                {inst.socials.twitter}
+                              </a>
+                            </div>
+                          )}
+                          {inst.socials?.youtube && (
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                              <Youtube size={16} className="text-emerald-600 shrink-0" /> 
+                              <a 
+                                href={inst.socials.youtube.startsWith('http') ? inst.socials.youtube : `https://${inst.socials.youtube.replace(/^(https?:\/\/)?/, '')}`} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="hover:text-emerald-600 transition-colors break-all font-medium"
+                              >
+                                {inst.socials.youtube}
+                              </a>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-4 pt-4">
+                          {inst.website && (
+                            <a 
+                              href={formatExternalUrl(inst.website).url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="px-6 py-2 bg-emerald-600 text-white rounded-full text-sm font-bold hover:bg-emerald-700 inline-flex items-center gap-1.5 transition-all shadow-xs"
+                            >
+                              <span>Visitar Site</span>
+                              <Globe size={14} />
+                            </a>
+                          )}
+                          <button 
+                            onClick={() => setExpandedId(null)}
+                            className="px-6 py-2 border border-emerald-200 text-emerald-700 rounded-full text-sm font-bold hover:bg-emerald-50"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {expandedId !== inst.id && (
+                      <button 
+                        onClick={() => setExpandedId(inst.id)}
+                        className="text-emerald-600 font-bold text-sm flex items-center gap-1 hover:gap-2 transition-all"
+                      >
+                        Ver detalhes <ArrowRight size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
