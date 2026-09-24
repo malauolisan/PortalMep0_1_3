@@ -57,17 +57,22 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        const isMasterAdmin = firebaseUser.email === "epaz@e-paz.com.br" || firebaseUser.email === "admin@mep.org.br";
         const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
         if (userDoc.exists()) {
-          setUser({ uid: firebaseUser.uid, ...userDoc.data() } as UserProfile);
+          const data = userDoc.data();
+          const role = isMasterAdmin ? 'admin' : (data.role || 'colaborador');
+          if (isMasterAdmin && data.role !== 'admin') {
+            await setDoc(doc(db, 'users', firebaseUser.uid), { role: 'admin' }, { merge: true });
+          }
+          setUser({ uid: firebaseUser.uid, ...data, role } as UserProfile);
         } else {
           // Default role for new users (or first admin check)
-          const isFirstAdmin = firebaseUser.email === "epaz@e-paz.com.br" || firebaseUser.email === "admin@mep.org.br";
           const newUser: UserProfile = {
             uid: firebaseUser.uid,
             displayName: firebaseUser.displayName,
             email: firebaseUser.email,
-            role: isFirstAdmin ? 'admin' : 'colaborador',
+            role: isMasterAdmin ? 'admin' : 'colaborador',
             photoURL: firebaseUser.photoURL
           };
           await setDoc(doc(db, 'users', firebaseUser.uid), newUser);

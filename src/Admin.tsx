@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
   LayoutDashboard, 
@@ -294,8 +295,11 @@ const MarkdownToolbar = ({
     setIsLinkModalOpen(true);
   };
 
-  const handleConfirmInsertLink = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleConfirmInsertLink = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const trimmedUrl = linkUrl.trim();
     if (!trimmedUrl) {
       alert('Por favor, informe o endereço web (URL) de destino do link.');
@@ -325,11 +329,14 @@ const MarkdownToolbar = ({
         const pos = start + markdownLink.length;
         textarea.setSelectionRange(pos, pos);
       }
-    }, 0);
+    }, 50);
   };
 
-  const handleConfirmInsertImage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleConfirmInsertImage = (e?: React.SyntheticEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const trimmedUrl = imageUrl.trim();
     if (!trimmedUrl) {
       alert('Por favor, informe a URL da imagem.');
@@ -434,12 +441,20 @@ const MarkdownToolbar = ({
         </div>
       </div>
 
-      {/* Interactive Link Insertion Modal */}
-      {isLinkModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+      {/* Interactive Link Insertion Modal (Mounted via Portal outside any parent form) */}
+      {typeof document !== 'undefined' && isLinkModalOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsLinkModalOpen(false);
+          }}
+        >
           <div 
             className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
               <div className="flex items-center gap-2 text-emerald-800 font-bold">
@@ -450,14 +465,18 @@ const MarkdownToolbar = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIsLinkModalOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsLinkModalOpen(false);
+                }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmInsertLink} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
                   Texto Visível do Link
@@ -467,6 +486,13 @@ const MarkdownToolbar = ({
                   autoFocus
                   value={linkText}
                   onChange={(e) => setLinkText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleConfirmInsertLink(e);
+                    }
+                  }}
                   placeholder="Ex: Leia a matéria completa no site oficial"
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
@@ -483,6 +509,13 @@ const MarkdownToolbar = ({
                   type="text"
                   value={linkUrl}
                   onChange={(e) => setLinkUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleConfirmInsertLink(e);
+                    }
+                  }}
                   placeholder="Ex: https://www.exemplo.com.br ou www.globo.com"
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
                 />
@@ -506,30 +539,48 @@ const MarkdownToolbar = ({
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => setIsLinkModalOpen(false)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsLinkModalOpen(false);
+                  }}
                   className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleConfirmInsertLink(e);
+                  }}
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check size={16} />
                   <span>Inserir Link</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Interactive Image by URL Modal */}
-      {isImageModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+      {/* Interactive Image by URL Modal (Mounted via Portal outside any parent form) */}
+      {typeof document !== 'undefined' && isImageModalOpen && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsImageModalOpen(false);
+          }}
+        >
           <div 
             className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150"
             onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
               <div className="flex items-center gap-2 text-emerald-800 font-bold">
@@ -540,14 +591,18 @@ const MarkdownToolbar = ({
               </div>
               <button
                 type="button"
-                onClick={() => setIsImageModalOpen(false)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsImageModalOpen(false);
+                }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleConfirmInsertImage} className="space-y-4">
+            <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
                   Endereço da Imagem (URL) *
@@ -557,6 +612,13 @@ const MarkdownToolbar = ({
                   autoFocus
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleConfirmInsertImage(e);
+                    }
+                  }}
                   placeholder="https://exemplo.com/foto.jpg"
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
                 />
@@ -570,6 +632,13 @@ const MarkdownToolbar = ({
                   type="text"
                   value={imageAlt}
                   onChange={(e) => setImageAlt(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleConfirmInsertImage(e);
+                    }
+                  }}
                   placeholder="Ex: Foto do encontro espírita"
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
@@ -578,22 +647,32 @@ const MarkdownToolbar = ({
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
                 <button
                   type="button"
-                  onClick={() => setIsImageModalOpen(false)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsImageModalOpen(false);
+                  }}
                   className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleConfirmInsertImage(e);
+                  }}
                   className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check size={16} />
                   <span>Inserir Imagem</span>
                 </button>
               </div>
-            </form>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
@@ -712,13 +791,10 @@ const AdminSidebar = () => {
     { name: 'Eventos', icon: Calendar, path: '/admin/eventos' },
     { name: 'Instituições', icon: Building2, path: '/admin/instituicoes' },
     { name: 'Artigos', icon: BookOpen, path: '/admin/artigos' },
+    { name: 'Slides', icon: ImageIcon, path: '/admin/slides' },
+    { name: 'Módulos Home', icon: Grid, path: '/admin/modulos' },
+    { name: 'Usuários', icon: Users, path: '/admin/usuarios' },
   ];
-
-  if (user?.role === 'admin') {
-    menuItems.push({ name: 'Slides', icon: ImageIcon, path: '/admin/slides' });
-    menuItems.push({ name: 'Módulos Home', icon: Grid, path: '/admin/modulos' });
-    menuItems.push({ name: 'Usuários', icon: Users, path: '/admin/usuarios' });
-  }
 
   return (
     <aside className="w-64 bg-emerald-950 text-emerald-50 flex flex-col h-screen sticky top-0">
@@ -832,6 +908,9 @@ export const Dashboard = () => {
           </Link>
           <Link to="/admin/modulos" className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
             <Plus size={16} /> Módulo
+          </Link>
+          <Link to="/admin/usuarios" className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
+            <Plus size={16} /> Usuário
           </Link>
         </div>
       </header>
@@ -2042,6 +2121,7 @@ export const ManageArticles = () => {
 
 export const ManageUsers = () => {
   const { user: currentUser } = useContent();
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.email === 'epaz@e-paz.com.br' || currentUser?.email === 'admin@mep.org.br';
   const [users, setUsers] = React.useState<any[]>([]);
   const [isAdding, setIsAdding] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
@@ -2057,7 +2137,7 @@ export const ManageUsers = () => {
   const [form, setForm] = React.useState(initialForm);
 
   React.useEffect(() => {
-    if (currentUser?.role !== 'admin') return;
+    if (!isAdmin) return;
 
     const q = query(collection(db, 'users'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -2065,7 +2145,7 @@ export const ManageUsers = () => {
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'users'));
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2103,7 +2183,7 @@ export const ManageUsers = () => {
     }
   };
 
-  if (currentUser?.role !== 'admin') {
+  if (!isAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4">
         <div className="w-20 h-20 bg-red-50 rounded-full flex items-center justify-center text-red-500">
