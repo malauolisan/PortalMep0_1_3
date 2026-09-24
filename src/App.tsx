@@ -101,6 +101,10 @@ const Header = () => {
     await signOut(auth);
   };
 
+  if (location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <header 
       className={cn(
@@ -752,6 +756,11 @@ const FeaturedModules = () => {
 };
 
 const Footer = () => {
+  const location = useLocation();
+  if (location.pathname.startsWith('/admin')) {
+    return null;
+  }
+
   return (
     <footer className="bg-emerald-950 text-emerald-50 pt-20 pb-10 px-6">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-16">
