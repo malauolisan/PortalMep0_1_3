@@ -16,3 +16,43 @@
     @apply font-serif;
   }
 }
+
+/* Image insertion and layout in markdown prose */
+.prose {
+  overflow-wrap: break-word;
+}
+.prose::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+.img-float-left {
+  float: left !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 1rem !important;
+  margin-right: 1.5rem !important;
+  clear: left;
+}
+.img-float-right {
+  float: right !important;
+  margin-top: 0.5rem !important;
+  margin-bottom: 1rem !important;
+  margin-left: 1.5rem !important;
+  clear: right;
+}
+.img-center {
+  display: block !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  margin-top: 1.5rem !important;
+  margin-bottom: 1.5rem !important;
+  clear: both;
+}
+.img-inline {
+  display: inline-block !important;
+  margin-left: 0.5rem !important;
+  margin-right: 0.5rem !important;
+  margin-top: 0.25rem !important;
+  margin-bottom: 0.25rem !important;
+  vertical-align: middle !important;
+}

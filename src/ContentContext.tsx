@@ -3,7 +3,7 @@ import { News, Event, Institution, Article, Slide, FeaturedModule, UserProfile }
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { mockSlides, mockFeaturedModules } from './data';
+import { mockEvents, mockSlides, mockFeaturedModules } from './data';
 
 interface ContentContextType {
   news: News[];
@@ -23,6 +23,7 @@ interface ContentContextType {
   addEvent: (data: Omit<Event, 'id' | 'createdAt'>) => Promise<void>;
   updateEvent: (id: string, data: Partial<Event>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
+  restoreDefaultEvents: () => Promise<void>;
   
   addInstitution: (data: Omit<Institution, 'id' | 'createdAt'>) => Promise<void>;
   updateInstitution: (id: string, data: Partial<Institution>) => Promise<void>;
@@ -35,10 +36,12 @@ interface ContentContextType {
   addSlide: (data: Omit<Slide, 'id' | 'createdAt'>) => Promise<void>;
   updateSlide: (id: string, data: Partial<Slide>) => Promise<void>;
   deleteSlide: (id: string) => Promise<void>;
+  restoreDefaultSlides: () => Promise<void>;
 
   addFeaturedModule: (data: Omit<FeaturedModule, 'id' | 'createdAt'>) => Promise<void>;
   updateFeaturedModule: (id: string, data: Partial<FeaturedModule>) => Promise<void>;
   deleteFeaturedModule: (id: string) => Promise<void>;
+  restoreDefaultFeaturedModules: () => Promise<void>;
 }
 
 const ContentContext = createContext<ContentContextType | undefined>(undefined);
@@ -78,6 +81,86 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
           await setDoc(doc(db, 'users', firebaseUser.uid), newUser);
           setUser(newUser);
         }
+
+        // Auto-heal/seed featuredModules and slides in Firestore if needed
+        try {
+          // Check and heal featuredModules in Firestore
+          for (let i = 0; i < mockFeaturedModules.length; i++) {
+            const m = mockFeaturedModules[i];
+            const mRef = doc(db, 'featuredModules', m.id);
+            const mSnap = await getDoc(mRef);
+            if (!mSnap.exists()) {
+              await setDoc(mRef, {
+                title: m.title,
+                desc: m.desc,
+                img: m.img,
+                color: m.color,
+                link: m.link,
+                order: m.order || (i + 1),
+                createdAt: new Date(Date.now() - (mockFeaturedModules.length - i) * 60000).toISOString()
+              });
+            } else {
+              const d = mSnap.data();
+              const needsUpdate = !d.createdAt || d.order === undefined;
+              if (needsUpdate) {
+                await setDoc(mRef, {
+                  createdAt: d.createdAt || d.updatedAt || new Date(Date.now() - (mockFeaturedModules.length - i) * 60000).toISOString(),
+                  order: d.order !== undefined ? d.order : (m.order || (i + 1))
+                }, { merge: true });
+              }
+            }
+          }
+
+          // Check and heal slides in Firestore
+          for (let i = 0; i < mockSlides.length; i++) {
+            const s = mockSlides[i];
+            const sRef = doc(db, 'slides', s.id);
+            const sSnap = await getDoc(sRef);
+            if (!sSnap.exists()) {
+              await setDoc(sRef, {
+                title: s.title,
+                subtitle: s.subtitle,
+                image: s.image,
+                link: s.link,
+                createdAt: new Date(Date.now() - (mockSlides.length - i) * 60000).toISOString()
+              });
+            } else {
+              const d = sSnap.data();
+              if (!d.createdAt) {
+                await setDoc(sRef, {
+                  createdAt: d.updatedAt || new Date(Date.now() - (mockSlides.length - i) * 60000).toISOString()
+                }, { merge: true });
+              }
+            }
+          }
+
+          // Check and initialize events in Firestore if needed
+          const eventsInitRef = doc(db, 'events', '_initialized');
+          const eventsInitSnap = await getDoc(eventsInitRef);
+          if (!eventsInitSnap.exists()) {
+            for (let i = 0; i < mockEvents.length; i++) {
+              const ev = mockEvents[i];
+              const evRef = doc(db, 'events', ev.id);
+              const evSnap = await getDoc(evRef);
+              if (!evSnap.exists()) {
+                await setDoc(evRef, {
+                  title: ev.title,
+                  subtitle: (ev as any).subtitle || '',
+                  description: ev.description || '',
+                  author: (ev as any).author || 'Equipe MEP',
+                  date: ev.date || '',
+                  time: ev.time || '',
+                  location: ev.location || '',
+                  image: ev.image || '',
+                  createdAt: new Date(Date.now() - (mockEvents.length - i) * 60000).toISOString()
+                });
+              }
+            }
+            await setDoc(eventsInitRef, { initialized: true, seededAt: new Date().toISOString() });
+          }
+        } catch (healErr) {
+          console.warn('[ContentContext] Auto-healing check completed with note:', healErr);
+        }
       } else {
         setUser(null);
       }
@@ -93,9 +176,25 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
       setNews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as News)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'news'));
 
-    const qEvents = query(collection(db, 'events'), orderBy('createdAt', 'desc'));
+    // Retrieve all events without restrictive orderBy so all documents are always visible, editable, and deletable
+    const qEvents = collection(db, 'events');
     const unsubEvents = onSnapshot(qEvents, (snapshot) => {
-      setEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event)));
+      const data = snapshot.docs
+        .filter(d => d.id !== '_initialized')
+        .map(d => {
+          const item = d.data();
+          return {
+            id: d.id,
+            ...item,
+            createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
+          } as Event;
+        });
+      data.sort((a, b) => {
+        const timeB = b.createdAt || b.updatedAt || '';
+        const timeA = a.createdAt || a.updatedAt || '';
+        return timeB.localeCompare(timeA);
+      });
+      setEvents(data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'events'));
 
     const qInst = query(collection(db, 'institutions'), orderBy('createdAt', 'desc'));
@@ -108,15 +207,41 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
       setArticles(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Article)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'articles'));
 
-    const qSlides = query(collection(db, 'slides'), orderBy('createdAt', 'desc'));
+    // Retrieve all slides without restrictive orderBy to guarantee documents without createdAt are never omitted
+    const qSlides = collection(db, 'slides');
     const unsubSlides = onSnapshot(qSlides, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Slide));
+      const data = snapshot.docs.map(d => {
+        const item = d.data();
+        return {
+          id: d.id,
+          ...item,
+          createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
+        } as unknown as Slide;
+      });
+      data.sort((a, b) => {
+        const timeB = b.createdAt || b.updatedAt || '';
+        const timeA = a.createdAt || a.updatedAt || '';
+        return timeB.localeCompare(timeA);
+      });
       setSlides(data.length > 0 ? data : mockSlides);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'slides'));
 
-    const qModules = query(collection(db, 'featuredModules'), orderBy('createdAt', 'desc'));
+    // Retrieve all featured modules without restrictive orderBy so all documents are always visible and editable
+    const qModules = collection(db, 'featuredModules');
     const unsubModules = onSnapshot(qModules, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FeaturedModule));
+      const data = snapshot.docs.map(d => {
+        const item = d.data();
+        return {
+          id: d.id,
+          ...item,
+          createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
+        } as FeaturedModule;
+      });
+      data.sort((a, b) => {
+        const timeB = b.createdAt || b.updatedAt || '';
+        const timeA = a.createdAt || a.updatedAt || '';
+        return timeB.localeCompare(timeA);
+      });
       setFeaturedModules(data.length > 0 ? data : mockFeaturedModules);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'featuredModules'));
 
@@ -155,13 +280,36 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
   };
   const updateEvent = async (id: string, data: Partial<Event>) => {
     try {
-      await setDoc(doc(db, 'events', id), { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+      const now = new Date().toISOString();
+      const existing = events.find(e => e.id === id);
+      const createdAt = existing?.createdAt || data.createdAt || now;
+      await setDoc(doc(db, 'events', id), { ...data, createdAt, updatedAt: now }, { merge: true });
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `events/${id}`); }
   };
   const deleteEvent = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'events', id));
     } catch (err) { handleFirestoreError(err, OperationType.DELETE, `events/${id}`); }
+  };
+  const restoreDefaultEvents = async () => {
+    try {
+      for (let i = 0; i < mockEvents.length; i++) {
+        const ev = mockEvents[i];
+        await setDoc(doc(db, 'events', ev.id), {
+          title: ev.title,
+          subtitle: (ev as any).subtitle || '',
+          description: ev.description || '',
+          author: (ev as any).author || 'Equipe MEP',
+          date: ev.date || '',
+          time: ev.time || '',
+          location: ev.location || '',
+          image: ev.image || '',
+          createdAt: new Date(Date.now() - (mockEvents.length - i) * 60000).toISOString()
+        });
+      }
+      const eventsInitRef = doc(db, 'events', '_initialized');
+      await setDoc(eventsInitRef, { initialized: true, restoredAt: new Date().toISOString() }, { merge: true });
+    } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'events'); }
   };
 
   const addInstitution = async (data: Omit<Institution, 'id' | 'createdAt'>) => {
@@ -203,13 +351,30 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
   };
   const updateSlide = async (id: string, data: Partial<Slide>) => {
     try {
-      await setDoc(doc(db, 'slides', id), { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+      const now = new Date().toISOString();
+      const existing = slides.find(s => s.id === id);
+      const createdAt = existing?.createdAt || data.createdAt || now;
+      await setDoc(doc(db, 'slides', id), { ...data, createdAt, updatedAt: now }, { merge: true });
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `slides/${id}`); }
   };
   const deleteSlide = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'slides', id));
     } catch (err) { handleFirestoreError(err, OperationType.DELETE, `slides/${id}`); }
+  };
+  const restoreDefaultSlides = async () => {
+    try {
+      for (let i = 0; i < mockSlides.length; i++) {
+        const s = mockSlides[i];
+        await setDoc(doc(db, 'slides', s.id), {
+          title: s.title,
+          subtitle: s.subtitle,
+          image: s.image,
+          link: s.link,
+          createdAt: new Date(Date.now() - (mockSlides.length - i) * 60000).toISOString()
+        });
+      }
+    } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'slides'); }
   };
 
   const addFeaturedModule = async (data: Omit<FeaturedModule, 'id' | 'createdAt'>) => {
@@ -219,7 +384,10 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
   };
   const updateFeaturedModule = async (id: string, data: Partial<FeaturedModule>) => {
     try {
-      await setDoc(doc(db, 'featuredModules', id), { ...data, updatedAt: new Date().toISOString() }, { merge: true });
+      const now = new Date().toISOString();
+      const existing = featuredModules.find(m => m.id === id);
+      const createdAt = existing?.createdAt || data.createdAt || now;
+      await setDoc(doc(db, 'featuredModules', id), { ...data, createdAt, updatedAt: now }, { merge: true });
     } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `featuredModules/${id}`); }
   };
   const deleteFeaturedModule = async (id: string) => {
@@ -227,16 +395,31 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
       await deleteDoc(doc(db, 'featuredModules', id));
     } catch (err) { handleFirestoreError(err, OperationType.DELETE, `featuredModules/${id}`); }
   };
+  const restoreDefaultFeaturedModules = async () => {
+    try {
+      for (let i = 0; i < mockFeaturedModules.length; i++) {
+        const m = mockFeaturedModules[i];
+        await setDoc(doc(db, 'featuredModules', m.id), {
+          title: m.title,
+          desc: m.desc,
+          img: m.img,
+          color: m.color,
+          link: m.link,
+          createdAt: new Date(Date.now() - (mockFeaturedModules.length - i) * 60000).toISOString()
+        });
+      }
+    } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'featuredModules'); }
+  };
 
   return (
     <ContentContext.Provider value={{ 
       news, events, institutions, articles, slides, featuredModules, user, loading,
       addNews, updateNews, deleteNews,
-      addEvent, updateEvent, deleteEvent,
+      addEvent, updateEvent, deleteEvent, restoreDefaultEvents,
       addInstitution, updateInstitution, deleteInstitution,
       addArticle, updateArticle, deleteArticle,
-      addSlide, updateSlide, deleteSlide,
-      addFeaturedModule, updateFeaturedModule, deleteFeaturedModule
+      addSlide, updateSlide, deleteSlide, restoreDefaultSlides,
+      addFeaturedModule, updateFeaturedModule, deleteFeaturedModule, restoreDefaultFeaturedModules
     }}>
       {children}
     </ContentContext.Provider>

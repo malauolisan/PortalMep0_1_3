@@ -16,16 +16,14 @@ service cloud.firestore {
       return isAuthenticated() &&
         ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
-         request.auth.token.email == "epaz@e-paz.com.br" ||
-         request.auth.token.email == "admin@mep.org.br");
+         request.auth.token.email in ["epaz@e-paz.com.br", "admin@mep.org.br"]);
     }
 
     function isColaborador() {
       return isAuthenticated() &&
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'colaborador'])) ||
-         request.auth.token.email == "epaz@e-paz.com.br" ||
-         request.auth.token.email == "admin@mep.org.br");
+        (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'colaborador', 'editor'] ||
+         request.auth.token.email in ["epaz@e-paz.com.br", "admin@mep.org.br"]);
     }
 
     // --- Rules ---
@@ -38,36 +36,32 @@ service cloud.firestore {
 
     match /news/{newsId} {
       allow read: if true;
-      allow create, update: if isColaborador();
-      allow delete: if isColaborador();
+      allow create, update, delete: if isColaborador();
     }
 
     match /events/{eventId} {
       allow read: if true;
-      allow create, update: if isColaborador();
-      allow delete: if isColaborador();
+      allow create, update, delete: if isAuthenticated();
     }
 
     match /institutions/{instId} {
       allow read: if true;
-      allow create, update: if isColaborador();
-      allow delete: if isColaborador();
+      allow create, update, delete: if isColaborador();
     }
 
     match /articles/{articleId} {
       allow read: if true;
-      allow create, update: if isColaborador();
-      allow delete: if isColaborador();
+      allow create, update, delete: if isColaborador();
     }
 
     match /slides/{slideId} {
       allow read: if true;
-      allow create, update, delete: if isColaborador();
+      allow create, update, delete: if isAuthenticated();
     }
 
     match /featuredModules/{moduleId} {
       allow read: if true;
-      allow create, update, delete: if isColaborador();
+      allow create, update, delete: if isAuthenticated();
     }
 
     match /test/{docId} {

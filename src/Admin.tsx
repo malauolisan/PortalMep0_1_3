@@ -44,7 +44,14 @@ import {
   ExternalLink,
   ArrowUpDown,
   ArrowDownAZ,
-  ArrowUpZA
+  ArrowUpZA,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Move,
+  Maximize2,
+  Sliders,
+  HelpCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useContent } from './ContentContext';
@@ -56,12 +63,13 @@ import { signOut } from 'firebase/auth';
 import { cn } from './lib/utils';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { News, Event, Institution, Article, UserProfile, Slide, FeaturedModule } from './types';
 import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules } from './data';
 import { uploadOptimizedImage, formatBytes, ImageOptimizationStats, optimizeImage } from './utils/imageOptimizer';
-import { customUrlTransform, markdownComponents, formatExternalUrl } from './utils/linkUtils';
+import { customUrlTransform, markdownComponents, formatExternalUrl, parseImageMetadata } from './utils/linkUtils';
 
-export { customUrlTransform, markdownComponents, formatExternalUrl };
+export { customUrlTransform, markdownComponents, formatExternalUrl, parseImageMetadata };
 
 // --- Markdown Toolbar ---
 
@@ -242,7 +250,6 @@ const MarkdownToolbar = ({
   setContent: (val: string) => void,
   folder?: string
 }) => {
-  const [uploadingInline, setUploadingInline] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Link Dialog State
@@ -251,10 +258,19 @@ const MarkdownToolbar = ({
   const [linkUrl, setLinkUrl] = useState('');
   const [linkSelection, setLinkSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
 
-  // Image by Link Dialog State
+  // Advanced Image Dialog State
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imageOrigin, setImageOrigin] = useState<'upload' | 'url'>('upload');
   const [imageUrl, setImageUrl] = useState('');
   const [imageAlt, setImageAlt] = useState('');
+  const [imageCaption, setImageCaption] = useState('');
+  const [imageSize, setImageSize] = useState<'25%' | '50%' | '75%' | '100%' | 'custom'>('50%');
+  const [customSize, setCustomSize] = useState('400px');
+  const [imageAlign, setImageAlign] = useState<'left' | 'center' | 'right' | 'inline'>('left');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadStats, setUploadStats] = useState<{ original: string; optimized: string; reduction: number } | null>(null);
+  const [imageSelection, setImageSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const insertText = (before: string, after: string = '') => {
     const textarea = textareaRef.current;
@@ -335,6 +351,92 @@ const MarkdownToolbar = ({
     }, 50);
   };
 
+  const handleOpenImageModal = (defaultTab: 'upload' | 'url' = 'upload') => {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? 0;
+    const end = textarea?.selectionEnd ?? 0;
+    const currentContent = typeof content === 'string' ? content : '';
+    setImageSelection({ start, end });
+    setUploadError(null);
+
+    const selected = currentContent.substring(start, end).trim();
+    if (selected) {
+      // Check if user highlighted an existing markdown image: ![alt](url)
+      const match = selected.match(/^!\[(.*?)\]\((.*?)\)$/);
+      if (match) {
+        const rawAlt = match[1];
+        const rawUrl = match[2];
+        const parsed = parseImageMetadata(rawUrl, rawAlt);
+        setImageUrl(parsed.url);
+        setImageAlt(parsed.alt);
+        setImageCaption(parsed.caption || '');
+        if (parsed.size === '25%' || parsed.size === '50%' || parsed.size === '75%' || parsed.size === '100%') {
+          setImageSize(parsed.size);
+        } else {
+          setImageSize('custom');
+          setCustomSize(parsed.size);
+        }
+        setImageAlign(parsed.align);
+        setImageOrigin('url');
+        setUploadStats(null);
+        setIsImageModalOpen(true);
+        return;
+      } else if (/^https?:\/\//i.test(selected) || /^\/uploads\//i.test(selected)) {
+        setImageUrl(selected);
+        setImageOrigin('url');
+        setIsImageModalOpen(true);
+        return;
+      } else {
+        // User highlighted text to be caption or alt description
+        setImageAlt(selected);
+        setImageCaption(selected);
+      }
+    } else {
+      // Default initial states
+      setImageUrl('');
+      setImageAlt('');
+      setImageCaption('');
+      setImageSize('50%');
+      setImageAlign('left');
+      setUploadStats(null);
+    }
+
+    setImageOrigin(defaultTab);
+    setIsImageModalOpen(true);
+  };
+
+  const handleFileUpload = async (file: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Por favor, selecione um arquivo de imagem válido (JPG, PNG, WebP, GIF).');
+      return;
+    }
+
+    setUploadingImage(true);
+    setUploadError(null);
+    try {
+      const result = await uploadOptimizedImage(file, folder, { maxDimension: 1200, quality: 0.82 });
+      setImageUrl(result.url);
+      const cleanName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+      if (!imageAlt) {
+        setImageAlt(cleanName);
+      }
+      setUploadStats({
+        original: formatBytes(result.stats.originalSize),
+        optimized: formatBytes(result.stats.optimizedSize),
+        reduction: result.stats.reductionPercentage
+      });
+    } catch (err: any) {
+      console.error("Erro ao enviar imagem:", err);
+      setUploadError('Erro ao enviar e otimizar imagem. Tente novamente ou use uma URL externa.');
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const handleConfirmInsertImage = (e?: React.SyntheticEvent) => {
     if (e) {
       e.preventDefault();
@@ -342,39 +444,60 @@ const MarkdownToolbar = ({
     }
     const trimmedUrl = imageUrl.trim();
     if (!trimmedUrl) {
-      alert('Por favor, informe a URL da imagem.');
+      alert('Por favor, faça o upload de uma imagem ou informe o endereço web (URL).');
       return;
     }
-    const alt = imageAlt.trim() || 'Imagem';
-    insertText(`\n\n![${alt}](${trimmedUrl})\n\n`, '');
+
+    const effectiveSize = imageSize === 'custom' ? (customSize.trim() || '400px') : imageSize;
+    const effectiveAlign = imageAlign;
+
+    // Build alt metadata string
+    let metaAlt = imageAlt.trim() || 'Imagem';
+    metaAlt += ` | ${effectiveSize} | ${effectiveAlign}`;
+    if (imageCaption.trim()) {
+      metaAlt += ` | ${imageCaption.trim()}`;
+    }
+
+    const markdownTag = `![${metaAlt}](${trimmedUrl})`;
+
+    const textarea = textareaRef.current;
+    const currentContent = typeof content === 'string' ? content : '';
+    const start = imageSelection.start;
+    const end = imageSelection.end;
+
+    // Formatting insertion based on alignment choice
+    let textToInsert = '';
+    if (effectiveAlign === 'inline') {
+      textToInsert = markdownTag;
+    } else if (effectiveAlign === 'left' || effectiveAlign === 'right') {
+      // For floating images, place cleanly without creating forced empty paragraphs
+      const charBefore = start > 0 ? currentContent[start - 1] : '\n';
+      const prefix = (charBefore === '\n' || charBefore === ' ') ? '' : ' ';
+      textToInsert = `${prefix}${markdownTag} `;
+    } else {
+      // Center block
+      const needsBeforeNewline = start > 0 && currentContent[start - 1] !== '\n';
+      const needsAfterNewline = end < currentContent.length && currentContent[end] !== '\n';
+      textToInsert = `${needsBeforeNewline ? '\n\n' : ''}${markdownTag}${needsAfterNewline ? '\n\n' : '\n'}`;
+    }
+
+    const newContent = currentContent.substring(0, start) + textToInsert + currentContent.substring(end);
+    setContent(newContent);
     setIsImageModalOpen(false);
+
+    // Reset inputs
     setImageUrl('');
     setImageAlt('');
-  };
+    setImageCaption('');
+    setUploadStats(null);
 
-  const handleInlineImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('Por favor, selecione um arquivo de imagem válido.');
-      return;
-    }
-
-    setUploadingInline(true);
-    try {
-      const result = await uploadOptimizedImage(file, folder, { maxDimension: 1200, quality: 0.82 });
-      const cleanAlt = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
-      insertText(`\n\n![${cleanAlt}](${result.url})\n\n`, '');
-    } catch (err) {
-      console.error("Error uploading inline image:", err);
-      alert('Erro ao otimizar e enviar a imagem para o texto.');
-    } finally {
-      setUploadingInline(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+    setTimeout(() => {
+      if (textarea) {
+        textarea.focus();
+        const newPos = start + textToInsert.length;
+        textarea.setSelectionRange(newPos, newPos);
       }
-    }
+    }, 50);
   };
 
   const tools = [
@@ -392,14 +515,14 @@ const MarkdownToolbar = ({
     },
     { 
       icon: ImageIcon, 
-      label: 'Inserir Imagem por Link', 
-      action: () => setIsImageModalOpen(true) 
+      label: 'Inserir ou Editar Imagem no Texto (Tamanho e Posição)', 
+      action: () => handleOpenImageModal('upload') 
     },
   ];
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-1 p-2 bg-gray-100 border-b border-gray-200 rounded-t-2xl">
+      <div className="flex flex-wrap items-center justify-between gap-1.5 p-2.5 bg-gray-100 border-b border-gray-200 rounded-t-2xl">
         <div className="flex flex-wrap items-center gap-1">
           {tools.map((tool, i) => (
             <button
@@ -407,7 +530,7 @@ const MarkdownToolbar = ({
               type="button"
               onClick={tool.action}
               title={tool.label}
-              className="p-2 hover:bg-white hover:text-emerald-600 rounded-lg transition-colors text-gray-500 cursor-pointer"
+              className="p-2 hover:bg-white hover:text-emerald-600 rounded-lg transition-colors text-gray-600 cursor-pointer"
             >
               <tool.icon size={16} />
             </button>
@@ -415,36 +538,19 @@ const MarkdownToolbar = ({
         </div>
 
         <div className="flex items-center gap-2">
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            accept="image/*" 
-            onChange={handleInlineImageUpload} 
-            className="hidden" 
-          />
           <button
             type="button"
-            disabled={uploadingInline}
-            onClick={() => fileInputRef.current?.click()}
-            title="Fazer upload de imagem otimizada para o texto"
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl text-xs font-bold transition-all border border-emerald-200 disabled:opacity-50 cursor-pointer"
+            onClick={() => handleOpenImageModal('upload')}
+            title="Inserir imagem no corpo do texto com controle de tamanho e alinhamento"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-emerald-50 text-emerald-700 hover:text-emerald-800 rounded-xl text-xs font-bold transition-all border border-emerald-200 shadow-2xs cursor-pointer"
           >
-            {uploadingInline ? (
-              <>
-                <Loader2 size={14} className="animate-spin text-emerald-600" />
-                <span>Otimizando...</span>
-              </>
-            ) : (
-              <>
-                <UploadCloud size={14} />
-                <span>Inserir Imagem (Upload)</span>
-              </>
-            )}
+            <ImageIcon size={14} className="text-emerald-600" />
+            <span>Inserir Imagem</span>
           </button>
         </div>
       </div>
 
-      {/* Interactive Link Insertion Modal (Mounted via Portal outside any parent form) */}
+      {/* Interactive Link Insertion Modal */}
       {typeof document !== 'undefined' && isLinkModalOpen && createPortal(
         <div 
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
@@ -570,10 +676,10 @@ const MarkdownToolbar = ({
         document.body
       )}
 
-      {/* Interactive Image by URL Modal (Mounted via Portal outside any parent form) */}
+      {/* Advanced Interactive Image Manager Modal (With Size and Position Controls) */}
       {typeof document !== 'undefined' && isImageModalOpen && createPortal(
         <div 
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs"
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/65 backdrop-blur-xs overflow-y-auto"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -581,16 +687,20 @@ const MarkdownToolbar = ({
           }}
         >
           <div 
-            className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150"
+            className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-7 shadow-2xl border border-emerald-100 animate-in fade-in zoom-in-95 duration-150 my-auto"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-4 border-b border-gray-100 mb-5">
-              <div className="flex items-center gap-2 text-emerald-800 font-bold">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 mb-4">
+              <div className="flex items-center gap-2.5 text-emerald-900 font-bold">
                 <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
-                  <ImageIcon size={18} />
+                  <ImageIcon size={20} />
                 </div>
-                <span>Inserir Imagem por Link</span>
+                <div>
+                  <h3 className="text-base sm:text-lg font-serif">Inserir Imagem no Texto</h3>
+                  <p className="text-xs text-gray-500 font-sans font-normal">Ajuste dimensões e posição livre no parágrafo</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -601,77 +711,341 @@ const MarkdownToolbar = ({
                 }}
                 className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
               >
-                <X size={18} />
+                <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                  Endereço da Imagem (URL) *
-                </label>
-                <input
-                  type="url"
-                  autoFocus
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleConfirmInsertImage(e);
-                    }
-                  }}
-                  placeholder="https://exemplo.com/foto.jpg"
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
-                />
+            {/* Source Tabs: Upload vs Web URL */}
+            <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
+              <button
+                type="button"
+                onClick={() => setImageOrigin('upload')}
+                className={cn(
+                  "flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                  imageOrigin === 'upload' ? "bg-white text-emerald-800 shadow-xs" : "text-gray-500 hover:text-gray-800"
+                )}
+              >
+                <UploadCloud size={15} />
+                <span>Upload de Arquivo</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setImageOrigin('url')}
+                className={cn(
+                  "flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer",
+                  imageOrigin === 'url' ? "bg-white text-emerald-800 shadow-xs" : "text-gray-500 hover:text-gray-800"
+                )}
+              >
+                <ExternalLink size={15} />
+                <span>Link da Web (URL)</span>
+              </button>
+            </div>
+
+            {/* Source Input Area */}
+            <div className="mb-4">
+              {imageOrigin === 'upload' ? (
+                <div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleFileUpload(file);
+                    }}
+                    className="hidden"
+                  />
+
+                  {imageUrl && !uploadingImage ? (
+                    <div className="flex items-center gap-3 p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl">
+                      <img 
+                        src={imageUrl} 
+                        alt="Preview" 
+                        className="w-16 h-16 object-cover rounded-xl border border-emerald-200 bg-white" 
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+                          <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                          <span className="truncate">Imagem pronta para inserção</span>
+                        </div>
+                        {uploadStats && (
+                          <span className="text-[11px] text-emerald-700 block mt-0.5 font-mono">
+                            {uploadStats.optimized} ({uploadStats.reduction}% menor)
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-xs text-emerald-700 hover:text-emerald-900 underline font-medium mt-1 cursor-pointer"
+                        >
+                          Trocar arquivo
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div 
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn(
+                        "border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all",
+                        uploadingImage 
+                          ? "border-emerald-300 bg-emerald-50/50" 
+                          : "border-gray-300 hover:border-emerald-500 bg-gray-50/50 hover:bg-emerald-50/20"
+                      )}
+                    >
+                      {uploadingImage ? (
+                        <div className="flex flex-col items-center gap-2 py-2">
+                          <Loader2 size={28} className="animate-spin text-emerald-600" />
+                          <span className="text-sm font-bold text-emerald-900">Otimizando e preparando imagem...</span>
+                          <span className="text-xs text-gray-500">Comprimindo com segurança para a publicação</span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center gap-1.5">
+                          <div className="p-3 bg-emerald-100 text-emerald-700 rounded-2xl mb-1">
+                            <UploadCloud size={24} />
+                          </div>
+                          <span className="text-sm font-bold text-gray-700">Clique para selecionar do seu dispositivo</span>
+                          <span className="text-xs text-gray-500">Suporta JPG, PNG, WebP e GIF (otimização automática)</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {uploadError && (
+                    <p className="text-xs text-red-600 mt-2 font-medium bg-red-50 p-2.5 rounded-xl border border-red-100">
+                      {uploadError}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                    Endereço da Imagem (URL) *
+                  </label>
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://exemplo.com.br/fotos/reuniao.jpg"
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                  />
+                  <span className="text-[11px] text-gray-500 mt-1 block">
+                    Cole o link direto da imagem na internet ou um caminho do site.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Size Options (Tamanho da Imagem) */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5 flex items-center justify-between">
+                <span>Tamanho da Imagem</span>
+                <span className="text-[11px] text-emerald-700 font-semibold normal-case">
+                  {imageSize === '25%' && 'Pequena (25% da largura)'}
+                  {imageSize === '50%' && 'Média (50% da largura)'}
+                  {imageSize === '75%' && 'Grande (75% da largura)'}
+                  {imageSize === '100%' && 'Total (100% - Destaque)'}
+                  {imageSize === 'custom' && `Personalizada (${customSize})`}
+                </span>
+              </label>
+              
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {[
+                  { id: '25%', label: '25%', desc: 'Pequena' },
+                  { id: '50%', label: '50%', desc: 'Média' },
+                  { id: '75%', label: '75%', desc: 'Grande' },
+                  { id: '100%', label: '100%', desc: 'Total' },
+                  { id: 'custom', label: 'Outro', desc: 'Personalizado' },
+                ].map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setImageSize(s.id as any)}
+                    className={cn(
+                      "p-2 rounded-xl border text-center transition-all cursor-pointer",
+                      imageSize === s.id 
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-sm" 
+                        : "bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200"
+                    )}
+                  >
+                    <span className="block text-xs font-bold">{s.label}</span>
+                    <span className={cn("block text-[10px]", imageSize === s.id ? "text-emerald-100" : "text-gray-500")}>
+                      {s.desc}
+                    </span>
+                  </button>
+                ))}
               </div>
 
+              {imageSize === 'custom' && (
+                <div className="mt-2.5 flex items-center gap-2 p-2 bg-gray-50 rounded-xl border border-gray-200">
+                  <span className="text-xs text-gray-500 shrink-0 font-medium">Largura personalizada:</span>
+                  <input
+                    type="text"
+                    value={customSize}
+                    onChange={(e) => setCustomSize(e.target.value)}
+                    placeholder="Ex: 350px ou 60%"
+                    className="flex-1 bg-white border border-gray-200 rounded-lg p-1.5 text-xs font-mono outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Alignment Options (Posicionamento e Fluidez do Texto) */}
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                Posicionamento no Texto (Livre)
+              </label>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  {
+                    id: 'left',
+                    icon: AlignLeft,
+                    label: 'À Esquerda',
+                    desc: 'Texto contorna à direita'
+                  },
+                  {
+                    id: 'center',
+                    icon: AlignCenter,
+                    label: 'Centralizada',
+                    desc: 'Bloco isolado no meio'
+                  },
+                  {
+                    id: 'right',
+                    icon: AlignRight,
+                    label: 'À Direita',
+                    desc: 'Texto contorna à esquerda'
+                  },
+                  {
+                    id: 'inline',
+                    icon: Move,
+                    label: 'Livre / Em Linha',
+                    desc: 'No ponto exato do cursor'
+                  },
+                ].map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => setImageAlign(pos.id as any)}
+                    className={cn(
+                      "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1",
+                      imageAlign === pos.id 
+                        ? "bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500/20" 
+                        : "bg-gray-50 hover:bg-gray-100 text-gray-700 border-gray-200"
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <pos.icon size={15} className={imageAlign === pos.id ? "text-emerald-700" : "text-gray-500"} />
+                      <span className="text-xs font-bold">{pos.label}</span>
+                    </div>
+                    <span className="text-[10px] text-gray-500 leading-tight">
+                      {pos.desc}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Caption & Alt inputs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
-                  Legenda / Texto Alternativo
+                  Legenda da Foto (Opcional)
+                </label>
+                <input
+                  type="text"
+                  value={imageCaption}
+                  onChange={(e) => setImageCaption(e.target.value)}
+                  placeholder="Ex: Foto: Arquivo MEP / Divulgação"
+                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-600 uppercase mb-1">
+                  Texto Alternativo (Alt)
                 </label>
                 <input
                   type="text"
                   value={imageAlt}
                   onChange={(e) => setImageAlt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      handleConfirmInsertImage(e);
-                    }
-                  }}
-                  placeholder="Ex: Foto do encontro espírita"
-                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                  placeholder="Ex: Encontro no auditório principal"
+                  className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500 outline-none"
                 />
               </div>
+            </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setIsImageModalOpen(false);
+            {/* Live Interactive Preview Box */}
+            {imageUrl.trim() && (
+              <div className="mb-4 p-3 bg-gray-50 rounded-2xl border border-gray-200">
+                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider block mb-2">
+                  Pré-visualização do Posicionamento no Texto:
+                </span>
+                <div className="p-3 bg-white rounded-xl border border-gray-100 text-xs text-gray-600 leading-relaxed overflow-hidden">
+                  <div className={cn(
+                    "transition-all",
+                    imageAlign === 'left' && "float-left mr-3 mb-2",
+                    imageAlign === 'right' && "float-right ml-3 mb-2",
+                    imageAlign === 'center' && "mx-auto block mb-3 text-center",
+                    imageAlign === 'inline' && "inline-block align-middle mx-1.5"
+                  )}
+                  style={{
+                    width: imageSize === '25%' ? '35%' : imageSize === '50%' ? '50%' : imageSize === '75%' ? '75%' : imageSize === '100%' ? '100%' : customSize,
+                    maxWidth: '100%'
                   }}
-                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-sm font-semibold hover:bg-gray-50 cursor-pointer"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleConfirmInsertImage(e);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Check size={16} />
-                  <span>Inserir Imagem</span>
-                </button>
+                  >
+                    <img
+                      src={imageUrl}
+                      alt="Prévia"
+                      className="rounded-xl object-cover w-full h-24 border border-emerald-100 shadow-xs"
+                    />
+                    {imageCaption.trim() && (
+                      <span className="text-[10px] text-gray-500 italic block text-center mt-1">
+                        {imageCaption}
+                      </span>
+                    )}
+                  </div>
+                  <p>
+                    O Movimento Espírita Progressista valoriza a reflexão crítica e a solidariedade humana. 
+                    Este texto ilustra como o conteúdo escrito fluirá naturalmente ao redor da imagem conforme 
+                    o alinhamento e dimensões que você configurou acima.
+                  </p>
+                </div>
               </div>
+            )}
+
+            {/* Quick helpful tip */}
+            <div className="p-2.5 bg-emerald-50/60 rounded-xl border border-emerald-100 text-[11px] text-emerald-800 flex items-start gap-2 mb-5">
+              <HelpCircle size={15} className="shrink-0 text-emerald-600 mt-0.5" />
+              <span>
+                <strong>Dica:</strong> A imagem será colocada no local exato do cursor. Você também poderá ajustar o tamanho e alinhamento no texto depois simplesmente alterando os valores entre barras: <code className="font-mono bg-white px-1 py-0.5 rounded text-emerald-900">![Alt | 50% | esquerda](url)</code>.
+              </span>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsImageModalOpen(false);
+                }}
+                className="px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 text-xs font-semibold hover:bg-gray-50 cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!imageUrl.trim() || uploadingImage}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleConfirmInsertImage(e);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md shadow-emerald-200 flex items-center gap-1.5 cursor-pointer transition-all"
+              >
+                <Check size={16} />
+                <span>Inserir no Texto</span>
+              </button>
             </div>
           </div>
         </div>,
@@ -1528,7 +1902,7 @@ export const ManageNews = () => {
                 <Edit size={16} /> Preview do Conteúdo
               </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
               </div>
             </div>
           </div>
@@ -1586,14 +1960,14 @@ export const ManageNews = () => {
 // --- Manage Events ---
 
 export const ManageEvents = () => {
-  const { events, addEvent, updateEvent, deleteEvent } = useContent();
+  const { events, addEvent, updateEvent, deleteEvent, restoreDefaultEvents } = useContent();
   const [editing, setEditing] = useState<any>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
-
-  const displayEvents = events.length > 0 ? events : mockEvents;
 
   const initialForm = { title: '', subtitle: '', author: '', description: '', date: '', time: '', location: '', image: '' };
   const [form, setForm] = useState(initialForm);
@@ -1606,15 +1980,19 @@ export const ManageEvents = () => {
     }
     setSaving(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       if (editing) {
         await updateEvent(editing.id, form);
+        setSuccessMessage('Evento atualizado com sucesso!');
       } else {
         await addEvent(form);
+        setSuccessMessage('Evento criado com sucesso!');
       }
       setEditing(null);
       setIsAdding(false);
       setForm(initialForm);
+      setTimeout(() => setSuccessMessage(null), 3000);
     } catch (error: any) {
       console.error("Error saving event:", error);
       const msg = error?.message || 'Erro ao salvar evento. Verifique os dados e tente novamente.';
@@ -1727,7 +2105,7 @@ export const ManageEvents = () => {
                 <Edit size={16} /> Preview da Descrição
               </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
               </div>
             </div>
           </div>
@@ -1743,27 +2121,87 @@ export const ManageEvents = () => {
           <h1 className="text-4xl font-serif text-emerald-950 mb-2">Eventos</h1>
           <p className="text-gray-500">Gerencie a agenda de eventos e atividades.</p>
         </div>
-        <button 
-          onClick={() => { setIsAdding(true); setEditing(null); setForm(initialForm); setErrorMessage(null); }} 
-          className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 hover:scale-105 active:scale-95"
-        >
-          <Plus size={24} /> Novo Evento
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            type="button"
+            disabled={restoring}
+            onClick={async () => {
+              if (window.confirm("Deseja restaurar os eventos padrão do sistema? Isso adicionará os eventos modelo caso ainda não existam.")) {
+                try {
+                  setRestoring(true);
+                  setErrorMessage(null);
+                  await restoreDefaultEvents();
+                  setSuccessMessage("Eventos padrão restaurados com sucesso!");
+                  setTimeout(() => setSuccessMessage(null), 3000);
+                } catch (err: any) {
+                  const msg = err?.message || 'Erro ao restaurar eventos.';
+                  setErrorMessage(msg);
+                  alert("Erro ao restaurar eventos: " + msg);
+                } finally {
+                  setRestoring(false);
+                }
+              }
+            }}
+            className="px-5 py-4 bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50 rounded-2xl font-bold flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <Sliders size={18} /> {restoring ? 'Restaurando...' : 'Restaurar Padrão'}
+          </button>
+          <button 
+            onClick={() => { setIsAdding(true); setEditing(null); setForm(initialForm); setErrorMessage(null); setSuccessMessage(null); }} 
+            className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Plus size={24} /> Novo Evento
+          </button>
+        </div>
       </header>
-      <ContentList items={displayEvents} title="Agenda de Eventos" icon={Calendar} onEdit={(item) => { 
-        setEditing(item); 
-        setErrorMessage(null);
-        setForm({
-          title: item.title || '',
-          subtitle: item.subtitle || '',
-          author: item.author || '',
-          description: item.description || '',
-          date: item.date || '',
-          time: item.time || '',
-          location: item.location || '',
-          image: item.image || ''
-        }); 
-      }} onDelete={deleteEvent} />
+
+      {successMessage && (
+        <div className="p-4 bg-emerald-50 text-emerald-800 rounded-2xl text-sm font-medium border border-emerald-200 flex items-center gap-2">
+          <CheckCircle2 size={18} className="text-emerald-600" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-medium border border-red-100 flex items-center gap-2">
+          <X size={18} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      <ContentList 
+        items={events} 
+        title="Agenda de Eventos" 
+        icon={Calendar} 
+        onEdit={(item) => { 
+          setEditing(item); 
+          setErrorMessage(null);
+          setSuccessMessage(null);
+          setForm({
+            title: item.title || '',
+            subtitle: item.subtitle || '',
+            author: item.author || '',
+            description: item.description || '',
+            date: item.date || '',
+            time: item.time || '',
+            location: item.location || '',
+            image: item.image || ''
+          }); 
+        }} 
+        onDelete={async (id) => {
+          try {
+            setErrorMessage(null);
+            await deleteEvent(id);
+            setSuccessMessage("Evento excluído com sucesso!");
+            setTimeout(() => setSuccessMessage(null), 3000);
+          } catch (err: any) {
+            console.error("Error deleting event:", err);
+            const msg = err?.message || 'Erro ao excluir evento.';
+            setErrorMessage(msg);
+            alert('Erro ao excluir evento: ' + msg);
+          }
+        }} 
+      />
     </div>
   );
 };
@@ -1928,7 +2366,7 @@ export const ManageInstitutions = () => {
                 <Edit size={16} /> Preview da Descrição
               </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{form.description || '*Nenhuma descrição ainda...*'}</Markdown>
               </div>
             </div>
           </div>
@@ -2120,7 +2558,7 @@ export const ManageArticles = () => {
                 <Edit size={16} /> Preview do Artigo
               </h4>
               <div className="prose prose-sm prose-emerald max-h-64 overflow-y-auto bg-white p-4 rounded-xl border border-emerald-100">
-                <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
+                <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{form.content || '*Nenhum conteúdo ainda...*'}</Markdown>
               </div>
             </div>
           </div>

@@ -153,7 +153,8 @@ export const mockFeaturedModules: FeaturedModule[] = [
     desc: "Conheça as casas que fazem parte do nosso movimento.",
     img: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&q=80&w=800",
     color: "bg-blue-600",
-    link: "/instituicoes"
+    link: "/instituicoes",
+    order: 1
   },
   {
     id: '2',
@@ -161,7 +162,8 @@ export const mockFeaturedModules: FeaturedModule[] = [
     desc: "Acesse obras raras e conteúdos exclusivos para estudo.",
     img: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?auto=format&fit=crop&q=80&w=800",
     color: "bg-amber-600",
-    link: "/artigos"
+    link: "/artigos",
+    order: 2
   },
   {
     id: '3',
@@ -169,6 +171,7 @@ export const mockFeaturedModules: FeaturedModule[] = [
     desc: "Descubra como você pode ajudar em nossas frentes de ação.",
     img: "https://images.unsplash.com/photo-1559027615-cd26736f5df4?auto=format&fit=crop&q=80&w=800",
     color: "bg-rose-600",
-    link: "/contato"
+    link: "/contato",
+    order: 3
   }
 ];

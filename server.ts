@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import axios from "axios";
 import Parser from "rss-parser";
 import dotenv from "dotenv";
@@ -12,12 +13,108 @@ async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Use JSON middleware for API if needed
-  app.use(express.json());
+  // Use JSON middleware with generous payload limit for base64 optimized images
+  app.use(express.json({ limit: "30mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+  // Ensure public/uploads directory exists and serve it statically
+  const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+  app.use('/uploads', express.static(uploadsDir));
+
+  // Image Upload Endpoint for rich text editor and media
+  app.post("/api/upload-image", async (req, res) => {
+    try {
+      const { dataUrl, fileName = "imagem", folder = "content" } = req.body;
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        return res.status(400).json({ error: "Campo dataUrl é obrigatório e deve ser uma string válida." });
+      }
+
+      const matches = dataUrl.match(/^data:([A-Za-z0-9-+\/.]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(400).json({ error: "Formato de imagem inválido. Deve ser um Data URL base64." });
+      }
+
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+
+      let ext = 'jpg';
+      if (mimeType.includes('webp')) ext = 'webp';
+      else if (mimeType.includes('png')) ext = 'png';
+      else if (mimeType.includes('gif')) ext = 'gif';
+      else if (mimeType.includes('svg')) ext = 'svg';
+
+      const cleanName = (fileName || 'imagem')
+        .replace(/\.[^/.]+$/, '')
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .substring(0, 35);
+      const safeFolder = (folder || 'content').replace(/[^a-zA-Z0-9_-]/g, '');
+      const uniqueFileName = `${safeFolder}_${Date.now()}_${cleanName || 'imagem'}.${ext}`;
+
+      const filePath = path.join(uploadsDir, uniqueFileName);
+      fs.writeFileSync(filePath, buffer);
+
+      // In production mode, also ensure it is available in dist/uploads if dist exists
+      const distUploads = path.join(process.cwd(), 'dist', 'uploads');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        if (!fs.existsSync(distUploads)) {
+          fs.mkdirSync(distUploads, { recursive: true });
+        }
+        fs.writeFileSync(path.join(distUploads, uniqueFileName), buffer);
+      }
+
+      const publicUrl = `/uploads/${uniqueFileName}`;
+      res.json({
+        success: true,
+        url: publicUrl,
+        fileName: uniqueFileName,
+        size: buffer.length
+      });
+    } catch (err: any) {
+      console.error("[Upload API] Erro ao salvar imagem:", err);
+      res.status(500).json({ error: err.message || "Falha ao gravar arquivo de imagem." });
+    }
+  });
 
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  app.post("/api/contact", async (req, res) => {
+    try {
+      const { nome, email, mensagem } = req.body;
+      if (!nome || !email || !mensagem) {
+        return res.status(400).json({ error: "Todos os campos (nome, email e mensagem) são obrigatórios." });
+      }
+
+      const clientOrigin = (req.headers.origin as string) || (req.headers.referer as string) || "https://ais-pre-c33oio7pix2qjgi3xakoum-30620865069.us-east1.run.app";
+      const forwardRes = await axios.post("https://formsubmit.co/ajax/mepbrasilnet@gmail.com", {
+        name: nome,
+        email: email,
+        message: mensagem,
+        _subject: `Mensagem enviada via Portal MEP - ${nome}`,
+        _replyto: email
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Referer': `${clientOrigin}/contato`,
+          'Origin': clientOrigin
+        },
+        timeout: 10000
+      });
+
+      return res.json({ 
+        success: true, 
+        message: forwardRes.data?.message || "Mensagem encaminhada para mepbrasilnet@gmail.com com sucesso." 
+      });
+    } catch (err: any) {
+      console.warn("[Contact API] Erro ao enviar mensagem para mepbrasilnet@gmail.com:", err?.message || err);
+      return res.status(500).json({ error: "Falha ao encaminhar a mensagem. Tente novamente ou use o e-mail direto." });
+    }
   });
 
   app.get("/api/youtube", async (req, res) => {

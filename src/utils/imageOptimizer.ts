@@ -324,9 +324,11 @@ function fileToDataUrl(file: File): Promise<string> {
 }
 
 /**
- * Uploads an optimized image to Firebase Storage with automatic client-side compression
- * and fallback to lightweight inline dataUrl if Storage is not configured, slow or blocked by CORS.
- * Strict timeout prevents the UI from ever hanging in "Otimizando..." state.
+ * Uploads an optimized image with client-side compression:
+ * 1. Client-side optimizes the image into lightweight WebP/JPEG format
+ * 2. Tries the fast local API endpoint (/api/upload-image) which stores clean files in /uploads
+ * 3. Falls back to Firebase Storage if available
+ * 4. As final fallback, uses ultra-compressed Data URL with safe size guarantees
  */
 export async function uploadOptimizedImage(
   file: File,
@@ -336,7 +338,40 @@ export async function uploadOptimizedImage(
   // 1. Optimize image in-memory first (instant, ~50ms)
   const optimized = await optimizeImage(file, { ...options, folder });
 
-  // 2. Try Firebase Storage with a strict 2-second timeout to avoid any hang
+  // 2. Try the server upload API (/api/upload-image)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const apiResponse = await fetch('/api/upload-image', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        dataUrl: optimized.dataUrl,
+        fileName: optimized.fileName,
+        folder: folder || 'content',
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (apiResponse.ok) {
+      const data = await apiResponse.json();
+      if (data && data.url) {
+        return {
+          url: data.url,
+          stats: optimized.stats,
+          isFirebaseStorage: false,
+        };
+      }
+    }
+  } catch (apiError) {
+    console.info('[ImageOptimizer] /api/upload-image não respondeu, tentando Firebase Storage...', apiError);
+  }
+
+  // 3. Try Firebase Storage with a strict 2-second timeout
   try {
     const timestamp = Date.now();
     const safePath = `${folder}/${timestamp}_${optimized.fileName}`;
@@ -365,12 +400,25 @@ export async function uploadOptimizedImage(
     }
   } catch (storageError) {
     console.info(
-      `[ImageOptimizer] Armazenamento externo em nuvem indisponível ou lento para '${folder}'. Usando imagem otimizada ultraleve (${optimized.stats.mimeType}):`,
+      `[ImageOptimizer] Armazenamento externo em nuvem indisponível para '${folder}'. Usando imagem otimizada segura:`,
       storageError
     );
   }
 
-  // 3. Fallback to lightweight optimized Data URL (safe size for Firestore)
+  // 4. Safe fallback: if dataUrl is larger than 120KB, re-optimize with compact dimension so Firestore document limit is never exceeded
+  if (optimized.dataUrl.length > 120000) {
+    try {
+      const compact = await optimizeImage(file, { maxDimension: 500, quality: 0.65, folder });
+      return {
+        url: compact.dataUrl,
+        stats: compact.stats,
+        isFirebaseStorage: false,
+      };
+    } catch {
+      // Use original optimized if compact fails
+    }
+  }
+
   return {
     url: optimized.dataUrl,
     stats: optimized.stats,

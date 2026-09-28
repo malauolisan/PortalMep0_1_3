@@ -2,7 +2,7 @@ export interface UserProfile {
   uid: string;
   displayName: string | null;
   email: string | null;
-  role: 'admin' | 'colaborador';
+  role: 'admin' | 'colaborador' | 'editor';
   photoURL: string | null;
 }
 
@@ -17,6 +17,7 @@ export interface News {
   summary: string;
   image: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Event {
@@ -30,6 +31,7 @@ export interface Event {
   image: string;
   description: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Institution {
@@ -46,6 +48,7 @@ export interface Institution {
   };
   image?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Article {
@@ -58,6 +61,7 @@ export interface Article {
   content: string;
   image?: string;
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Slide {
@@ -66,6 +70,8 @@ export interface Slide {
   title: string;
   subtitle: string;
   link?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FeaturedModule {
@@ -75,4 +81,7 @@ export interface FeaturedModule {
   img: string;
   color: string;
   link: string;
+  order?: number;
+  createdAt?: string;
+  updatedAt?: string;
 }

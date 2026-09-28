@@ -6,6 +6,7 @@ import { cn } from './lib/utils';
 import { mockNews, mockEvents, mockInstitutions, mockArticles } from './data';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 import { ContentProvider, useContent } from './ContentContext';
 import { LoginPage, AdminLayout, Dashboard, ManageNews, ManageEvents, ManageInstitutions, ManageArticles, ManageUsers, ManageSlides, ManageFeaturedModules } from './Admin';
 import { auth, createNewUser, db } from './firebase';
@@ -281,7 +282,7 @@ const NewsModal = ({ item, onClose }: { item: any, onClose: () => void }) => {
             </p>
           )}
           <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{item.content || ''}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{item.content || ''}</Markdown>
           </div>
           <div className="pt-6 border-t border-gray-100 flex justify-end">
             <button
@@ -403,7 +404,7 @@ const ArticleDetailPage = () => {
 
         {/* Content Body */}
         <div className="markdown-body prose prose-emerald prose-lg max-w-none text-gray-700 leading-relaxed border-b border-gray-100 pb-16">
-          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
         </div>
 
         {/* Other Articles Recommendation */}
@@ -484,7 +485,7 @@ const EventModal = ({ event, onClose }: { event: any, onClose: () => void }) => 
             )}
           </div>
           <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none">
-            <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
           </div>
           <div className="pt-6 border-t border-gray-100 flex justify-end">
             <button
@@ -802,17 +803,11 @@ const Footer = () => {
         <div>
           <h4 className="text-lg font-bold mb-6 border-b border-emerald-800 pb-2 inline-block">Contato</h4>
           <ul className="space-y-4">
-            <li className="flex gap-3 items-start">
-              <MapPin size={20} className="text-emerald-500 shrink-0" />
-              <span>Rua da Fraternidade, 123 - Centro, Cidade - UF</span>
-            </li>
-            <li className="flex gap-3 items-center">
-              <Phone size={20} className="text-emerald-500 shrink-0" />
-              <span>(00) 1234-5678</span>
-            </li>
             <li className="flex gap-3 items-center">
               <Mail size={20} className="text-emerald-500 shrink-0" />
-              <span>contato@mep.org.br</span>
+              <a href="mailto:mepbrasilnet@gmail.com" className="hover:text-emerald-400 transition-colors">
+                mepbrasilnet@gmail.com
+              </a>
             </li>
           </ul>
         </div>
@@ -1266,7 +1261,7 @@ const InstitutionsPage = () => {
                     <h3 className="text-2xl font-bold text-emerald-900 mb-3">{inst.name}</h3>
                     {expandedId === inst.id ? (
                       <div className="text-gray-700 leading-relaxed prose prose-emerald max-w-none mb-6">
-                        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>
+                        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>
                           {inst.description || ''}
                         </Markdown>
                       </div>
@@ -1438,7 +1433,7 @@ const ArticlesPage = () => {
                       </h3>
                     )}
                     <div className="text-gray-600 leading-relaxed line-clamp-3 prose prose-sm prose-emerald">
-                      <Markdown components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
+                      <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{article.content || ''}</Markdown>
                     </div>
                     <Link 
                       to={`/artigos/${article.id}`}
@@ -1619,7 +1614,7 @@ const EventsPage = () => {
                 <h2 className="text-2xl font-bold text-gray-900 mb-2 group-hover:text-emerald-700 transition-colors">{event.title}</h2>
                 {event.subtitle && <p className="text-emerald-600 font-medium mb-2">{event.subtitle}</p>}
                 <div className="text-gray-600 mb-4 prose prose-sm prose-emerald max-w-none line-clamp-3">
-                  <Markdown components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
+                  <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{event.description || ''}</Markdown>
                 </div>
                 <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500">
                   <div className="flex items-center gap-2 text-emerald-600 font-medium">
@@ -1682,7 +1677,7 @@ Em 21.09.2024, realiza-se a primeira de uma série de reuniões virtuais com a p
           <div className="w-20 h-1 bg-emerald-500 rounded-full mx-auto mt-6" />
         </header>
         <div className="markdown-body prose prose-emerald max-w-none prose-lg text-gray-700">
-          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
         </div>
       </div>
     </div>
@@ -1757,7 +1752,7 @@ Assinam este documento:
     <div className="pt-40 pb-20 px-6 bg-white min-h-screen">
       <div className="max-w-4xl mx-auto">
         <div className="markdown-body prose prose-emerald max-w-none">
-          <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={markdownComponents} urlTransform={customUrlTransform}>{content}</Markdown>
         </div>
       </div>
     </div>
@@ -1771,15 +1766,65 @@ const ContactPage = () => {
     mensagem: ''
   });
   const [status, setStatus] = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus('sending');
-    // Simulate sending
-    setTimeout(() => {
+    setErrorMessage(null);
+
+    const targetEmail = "mepbrasilnet@gmail.com";
+
+    try {
+      // 1. Try sending via backend server endpoint
+      const response = await fetch('/api/contact', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      });
+
+      if (response.ok) {
+        setStatus('success');
+        setFormData({ nome: '', email: '', mensagem: '' });
+        return;
+      }
+
+      // 2. Direct client-side submission to FormSubmit
+      const clientRes = await fetch(`https://formsubmit.co/ajax/${targetEmail}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          name: formData.nome,
+          email: formData.email,
+          message: formData.mensagem,
+          _subject: `Contato pelo Portal MEP - ${formData.nome}`,
+          _replyto: formData.email
+        })
+      });
+
+      if (clientRes.ok) {
+        setStatus('success');
+        setFormData({ nome: '', email: '', mensagem: '' });
+      } else {
+        // Fallback to mailto link
+        const mailtoUrl = `mailto:${targetEmail}?subject=${encodeURIComponent(`Contato Portal MEP - ${formData.nome}`)}&body=${encodeURIComponent(`Nome: ${formData.nome}\nE-mail: ${formData.email}\n\nMensagem:\n${formData.mensagem}`)}`;
+        window.location.href = mailtoUrl;
+        setStatus('success');
+        setFormData({ nome: '', email: '', mensagem: '' });
+      }
+    } catch (err: any) {
+      // Fallback to mailto on network errors
+      const mailtoUrl = `mailto:${targetEmail}?subject=${encodeURIComponent(`Contato Portal MEP - ${formData.nome}`)}&body=${encodeURIComponent(`Nome: ${formData.nome}\nE-mail: ${formData.email}\n\nMensagem:\n${formData.mensagem}`)}`;
+      window.location.href = mailtoUrl;
       setStatus('success');
       setFormData({ nome: '', email: '', mensagem: '' });
-    }, 1500);
+    }
   };
 
   return (
@@ -1787,7 +1832,12 @@ const ContactPage = () => {
       <div className="max-w-3xl mx-auto">
         <header className="text-center mb-16">
           <h1 className="text-4xl font-serif text-emerald-900 mb-4">Entre em Contato</h1>
-          <p className="text-gray-600">Estamos à disposição para ouvir você.</p>
+          <p className="text-gray-600">
+            Estamos à disposição para ouvir você. Mensagens enviadas seguem para{' '}
+            <a href="mailto:mepbrasilnet@gmail.com" className="font-semibold text-emerald-700 hover:underline">
+              mepbrasilnet@gmail.com
+            </a>.
+          </p>
           <div className="w-20 h-1 bg-emerald-500 rounded-full mx-auto mt-6" />
         </header>
 
@@ -1802,16 +1852,31 @@ const ContactPage = () => {
                 <Mail size={40} />
               </div>
               <h2 className="text-2xl font-bold text-emerald-900 mb-2">Mensagem Enviada!</h2>
-              <p className="text-emerald-700">Agradecemos o seu contato. Retornaremos em breve.</p>
-              <button 
-                onClick={() => setStatus('idle')}
-                className="mt-8 px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors"
-              >
-                Enviar outra mensagem
-              </button>
+              <p className="text-emerald-700 max-w-md mx-auto">
+                Agradecemos o seu contato. Sua mensagem foi direcionada para <strong>mepbrasilnet@gmail.com</strong> e retornaremos em breve.
+              </p>
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                <button 
+                  onClick={() => setStatus('idle')}
+                  className="px-8 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-colors"
+                >
+                  Enviar outra mensagem
+                </button>
+                <a
+                  href="mailto:mepbrasilnet@gmail.com"
+                  className="px-6 py-3 bg-white text-emerald-800 border border-emerald-200 rounded-xl font-bold hover:bg-emerald-50 transition-colors text-sm"
+                >
+                  Abrir no meu e-mail
+                </a>
+              </div>
             </motion.div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
+              {errorMessage && (
+                <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-medium border border-red-100">
+                  {errorMessage}
+                </div>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-xs font-bold text-emerald-900 uppercase tracking-widest mb-2 ml-1">Nome</label>
@@ -1849,9 +1914,9 @@ const ContactPage = () => {
               <button 
                 disabled={status === 'sending'}
                 type="submit"
-                className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50"
+                className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center justify-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer"
               >
-                {status === 'sending' ? 'Enviando...' : (
+                {status === 'sending' ? 'Enviando para mepbrasilnet@gmail.com...' : (
                   <>
                     Enviar Mensagem <ArrowRight size={20} />
                   </>
