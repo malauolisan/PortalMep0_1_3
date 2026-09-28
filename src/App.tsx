@@ -935,9 +935,14 @@ const SocialMediaSection = () => {
 
           {/* Instagram Column */}
           <div className="space-y-8">
-            <div className="flex items-center gap-3 border-b border-emerald-100 pb-4">
-              <Instagram className="text-pink-600" size={32} />
-              <h2 className="text-3xl font-serif text-emerald-900">Instagram</h2>
+            <div className="flex items-center justify-between border-b border-emerald-100 pb-4">
+              <div className="flex items-center gap-3">
+                <Instagram className="text-pink-600" size={32} />
+                <h2 className="text-3xl font-serif text-emerald-900">Instagram</h2>
+              </div>
+              <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                @mepbrasilnet
+              </span>
             </div>
             <div className="grid grid-cols-3 gap-4">
               {loading ? (
@@ -945,29 +950,35 @@ const SocialMediaSection = () => {
                   <div key={i} className="aspect-square bg-gray-200 rounded-2xl animate-pulse" />
                 ))
               ) : (
-                instagramPosts.map((post) => (
+                instagramPosts.slice(0, 3).map((post) => (
                   <motion.a
-                    key={post.id}
-                    href={post.link}
+                    key={post.id || post.shortcode}
+                    href={post.link || `https://www.instagram.com/p/${post.shortcode}/`}
                     target="_blank"
                     rel="noopener noreferrer"
                     whileHover={{ scale: 1.05 }}
-                    className="aspect-square overflow-hidden rounded-2xl shadow-sm group relative bg-emerald-50"
+                    className="aspect-square overflow-hidden rounded-2xl shadow-sm group relative bg-emerald-50 block border border-emerald-100"
+                    title={post.caption || "Post no Instagram @mepbrasilnet"}
                   >
                     {post.image ? (
                       <img 
                         src={post.image} 
-                        alt="Instagram Post" 
+                        alt={post.caption ? post.caption.slice(0, 80) : "Post no Instagram @mepbrasilnet"} 
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                         referrerPolicy="no-referrer"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-xs">
                         Post
                       </div>
                     )}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-4">
-                      <p className="text-white text-[10px] text-center line-clamp-3">
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                      <div className="flex items-center gap-1 text-pink-400 mb-1">
+                        <Instagram size={12} />
+                        <span className="text-[10px] font-bold">@mepbrasilnet</span>
+                      </div>
+                      <p className="text-white text-[10px] leading-tight line-clamp-3">
                         {post.caption}
                       </p>
                     </div>
@@ -981,7 +992,7 @@ const SocialMediaSection = () => {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 text-emerald-600 font-bold hover:underline"
             >
-              Seguir no Instagram <ArrowRight size={16} />
+              Seguir @mepbrasilnet no Instagram <ArrowRight size={16} />
             </a>
           </div>
         </div>

@@ -174,34 +174,196 @@ async function startServer() {
     }
   });
 
+interface InstagramPost {
+  id: string;
+  shortcode: string;
+  link: string;
+  image: string;
+  caption: string;
+  timestamp?: number;
+  isVideo?: boolean;
+}
+
+const DEFAULT_INSTAGRAM_POSTS: InstagramPost[] = [
+  {
+    id: "DdylcOeG7xP",
+    shortcode: "DdylcOeG7xP",
+    link: "https://www.instagram.com/p/DdylcOeG7xP/",
+    image: "/uploads/instagram/DdylcOeG7xP.webp",
+    caption: "Agora sim: a programação do II Congresso Ágora Espírita Zenilda Cavalcanti está completa! Nos dias 17 e 18 de outubro de 2026, teremos dois dias de encontros, debates, diversidade de perspectivas e diálogos com a contemporaneidade.",
+    timestamp: 1790511259,
+    isVideo: false
+  },
+  {
+    id: "DdwF-JpHD8F",
+    shortcode: "DdwF-JpHD8F",
+    link: "https://www.instagram.com/p/DdwF-JpHD8F/",
+    image: "/uploads/instagram/DdwF-JpHD8F.jpg",
+    caption: "II Congresso Ágora Espírita Zenilda Cavalcanti — Encontros, debates e pluralidade de perspectivas | @mepbrasilnet",
+    timestamp: 1790427612,
+    isVideo: false
+  },
+  {
+    id: "DdsLTpxBoQF",
+    shortcode: "DdsLTpxBoQF",
+    link: "https://www.instagram.com/p/DdsLTpxBoQF/",
+    image: "/uploads/instagram/DdsLTpxBoQF.jpg",
+    caption: "Chegou a programação de domingo! 🌸 O II Congresso Ágora Espírita Zenilda Cavalcanti segue no domingo, 18 de outubro de 2026, com uma programação construída para ampliar diálogos e provocar reflexões.",
+    timestamp: 1790296313,
+    isVideo: true
+  }
+];
+
+let cachedInstagramPosts: InstagramPost[] = [...DEFAULT_INSTAGRAM_POSTS];
+let lastInstagramFetch = 0;
+const IG_CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
+
+async function downloadInstagramImage(rawUrl: string, shortcode: string): Promise<string> {
+  try {
+    const igDir = path.join(process.cwd(), 'public', 'uploads', 'instagram');
+    if (!fs.existsSync(igDir)) {
+      fs.mkdirSync(igDir, { recursive: true });
+    }
+
+    const ext = rawUrl.includes('.webp') ? 'webp' : 'jpg';
+    const fileName = `${shortcode}.${ext}`;
+    const filePath = path.join(igDir, fileName);
+
+    // If file already exists and has valid size, reuse it
+    if (fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
+      return `/uploads/instagram/${fileName}`;
+    }
+
+    const cleanUrl = rawUrl
+      .replace(/\\\\\\\//g, '/')
+      .replace(/\\\\\//g, '/')
+      .replace(/\\\//g, '/')
+      .replace(/\\u0025/g, '%')
+      .replace(/\\u0026/g, '&');
+
+    const response = await axios.get(cleanUrl, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    if (response.status === 200 && response.data?.length > 1000) {
+      fs.writeFileSync(filePath, Buffer.from(response.data));
+      const distIgDir = path.join(process.cwd(), 'dist', 'uploads', 'instagram');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        if (!fs.existsSync(distIgDir)) {
+          fs.mkdirSync(distIgDir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(distIgDir, fileName), Buffer.from(response.data));
+      }
+      return `/uploads/instagram/${fileName}`;
+    }
+  } catch (err: any) {
+    console.warn(`[Instagram] Falha ao baixar imagem do post ${shortcode}:`, err?.message || err);
+  }
+  return `/uploads/instagram/${shortcode}.${rawUrl.includes('.webp') ? 'webp' : 'jpg'}`;
+}
+
+async function fetchMepInstagramPosts(): Promise<InstagramPost[]> {
+  const now = Date.now();
+  if (cachedInstagramPosts.length >= 3 && now - lastInstagramFetch < IG_CACHE_DURATION) {
+    return cachedInstagramPosts;
+  }
+
+  try {
+    const res = await axios.get("https://www.instagram.com/mepbrasilnet/embed", {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8'
+      },
+      timeout: 10000
+    });
+
+    const body = res.data;
+    if (typeof body === 'string' && body.includes('shortcode_media')) {
+      const matches = [...body.matchAll(/\{\\"shortcode_media\\":\{\\"__typename\\":\\"([^\\"]+)\\",\\"id\\":\\"(\d+)\\",\\"shortcode\\":\\"([A-Za-z0-9_-]+)\\"/g)];
+      
+      if (matches.length > 0) {
+        const newPosts: InstagramPost[] = [];
+        const topMatches = matches.slice(0, 3);
+
+        for (const m of topMatches) {
+          const typeName = m[1];
+          const shortcode = m[3];
+          const marker = `\\"shortcode\\":\\"${shortcode}\\"`;
+          const pos = body.indexOf(marker);
+          const chunk = pos !== -1 ? body.substring(pos, pos + 25000) : '';
+
+          const startDisplay = chunk.indexOf('display_url');
+          let displayUrl = '';
+          if (startDisplay !== -1) {
+            const urlStart = chunk.indexOf('http', startDisplay);
+            if (urlStart !== -1) {
+              let end = urlStart;
+              while (end < chunk.length && chunk.substring(end, end + 2) !== '\\"') {
+                end++;
+              }
+              displayUrl = chunk.substring(urlStart, end);
+            }
+          }
+
+          const mText = chunk.match(/\\"edge_media_to_caption\\":\{\\"edges\\":\[\{\\"node\\":\{\\"text\\":\\"([^"]+?)\\"\}\}\]/);
+          let caption = '';
+          if (mText) {
+            try {
+              caption = JSON.parse(`"${mText[1]}"`);
+            } catch (e) {
+              caption = mText[1].replace(/\\n/g, '\n');
+            }
+          }
+          if (!caption.trim()) {
+            caption = 'Publicação no perfil oficial do Instagram @mepbrasilnet';
+          }
+
+          const mTs = chunk.match(/\\"taken_at_timestamp\\":(\d+)/);
+          const timestamp = mTs ? Number(mTs[1]) : 0;
+
+          let localImagePath = `/uploads/instagram/${shortcode}.webp`;
+          if (displayUrl) {
+            localImagePath = await downloadInstagramImage(displayUrl, shortcode);
+          }
+
+          newPosts.push({
+            id: shortcode,
+            shortcode,
+            link: `https://www.instagram.com/p/${shortcode}/`,
+            image: localImagePath,
+            caption: caption.trim(),
+            timestamp,
+            isVideo: typeName === 'GraphVideo'
+          });
+        }
+
+        if (newPosts.length === 3) {
+          cachedInstagramPosts = newPosts;
+          lastInstagramFetch = now;
+          return cachedInstagramPosts;
+        }
+      }
+    }
+  } catch (error: any) {
+    console.warn("[Instagram] Erro ao sincronizar posts ao vivo de @mepbrasilnet:", error?.message || error);
+  }
+
+  lastInstagramFetch = now;
+  return cachedInstagramPosts;
+}
+
   app.get("/api/instagram", async (req, res) => {
     try {
-      // Instagram is much harder without an API key.
-      // We'll return the placeholder data for now, but structured for real integration.
-      // If the user provides a token, we could use the Instagram Graph API.
-      
-      res.json([
-        {
-          id: 'i1',
-          image: 'https://picsum.photos/seed/mep1/600/600',
-          link: 'https://www.instagram.com/mepbrasilnet/',
-          caption: 'Nossa última reunião foi um sucesso! #MEP #Espiritismo'
-        },
-        {
-          id: 'i2',
-          image: 'https://picsum.photos/seed/mep2/600/600',
-          link: 'https://www.instagram.com/mepbrasilnet/',
-          caption: 'Confira nossa agenda de eventos para o próximo mês.'
-        },
-        {
-          id: 'i3',
-          image: 'https://picsum.photos/seed/mep3/600/600',
-          link: 'https://www.instagram.com/mepbrasilnet/',
-          caption: 'Novos artigos publicados no nosso portal. Leia agora!'
-        }
-      ]);
+      const posts = await fetchMepInstagramPosts();
+      res.json(posts.slice(0, 3));
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch Instagram posts" });
+      console.error("Failed to fetch Instagram posts", error);
+      res.json(DEFAULT_INSTAGRAM_POSTS.slice(0, 3));
     }
   });
 
