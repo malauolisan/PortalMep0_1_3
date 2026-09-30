@@ -24,12 +24,18 @@ async function startServer() {
   }
   app.use('/uploads', express.static(uploadsDir));
 
-  // Ensure public/downloads directory exists and serve it statically
+  // Ensure public/downloads and public/download directories exist and serve them statically
   const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
   if (!fs.existsSync(downloadsDir)) {
     fs.mkdirSync(downloadsDir, { recursive: true });
   }
   app.use('/downloads', express.static(downloadsDir));
+
+  const downloadSingleDir = path.join(process.cwd(), 'public', 'download');
+  if (!fs.existsSync(downloadSingleDir)) {
+    fs.mkdirSync(downloadSingleDir, { recursive: true });
+  }
+  app.use('/download', express.static(downloadSingleDir));
 
   const uploadsDownloadsDir = path.join(uploadsDir, 'downloads');
   if (fs.existsSync(uploadsDownloadsDir)) {

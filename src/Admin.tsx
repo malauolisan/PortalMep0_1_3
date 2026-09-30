@@ -1095,12 +1095,12 @@ export const LoginPage = () => {
       >
         <div className="mb-8">
           <img 
-            src="/downloads/logoMep130x130.png" 
+            src="https://biteduc.com.br/download/logoMep130x130.png" 
             alt="MEP Logo" 
             className="w-20 h-20 mx-auto mb-4 object-contain"
             onError={(e) => {
               const target = e.currentTarget;
-              if (!target.src.endsWith('/logoMep130x130.png')) {
+              if (target.src !== '/logoMep130x130.png') {
                 target.src = '/logoMep130x130.png';
               }
             }}
@@ -1188,12 +1188,12 @@ const AdminSidebar = () => {
       <div className="p-8 border-b border-emerald-900">
         <Link to="/" className="flex items-center gap-2 group">
           <img 
-            src="/downloads/logoMep130x130.png" 
+            src="https://biteduc.com.br/download/logoMep130x130.png" 
             className="w-8 h-8 object-contain" 
             alt="Logo" 
             onError={(e) => {
               const target = e.currentTarget;
-              if (!target.src.endsWith('/logoMep130x130.png')) {
+              if (target.src !== '/logoMep130x130.png') {
                 target.src = '/logoMep130x130.png';
               }
             }}
