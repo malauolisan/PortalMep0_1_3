@@ -1095,10 +1095,15 @@ export const LoginPage = () => {
       >
         <div className="mb-8">
           <img 
-            src="https://mep.org.br/downloads/logoMep130x130.png" 
+            src="/downloads/logoMep130x130.png" 
             alt="MEP Logo" 
             className="w-20 h-20 mx-auto mb-4 object-contain"
-            referrerPolicy="no-referrer"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.endsWith('/logoMep130x130.png')) {
+                target.src = '/logoMep130x130.png';
+              }
+            }}
           />
           <h1 className="text-3xl font-serif text-emerald-900 mb-1">Portal MEP</h1>
           <p className="text-sm text-gray-500 italic">Administração do Movimento</p>
@@ -1182,7 +1187,17 @@ const AdminSidebar = () => {
     <aside className="w-64 bg-emerald-950 text-emerald-50 flex flex-col h-screen sticky top-0">
       <div className="p-8 border-b border-emerald-900">
         <Link to="/" className="flex items-center gap-2 group">
-          <img src="https://mep.org.br/downloads/logoMep130x130.png" className="w-8 h-8 object-contain" alt="Logo" />
+          <img 
+            src="/downloads/logoMep130x130.png" 
+            className="w-8 h-8 object-contain" 
+            alt="Logo" 
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.endsWith('/logoMep130x130.png')) {
+                target.src = '/logoMep130x130.png';
+              }
+            }}
+          />
           <span className="font-serif font-bold text-xl group-hover:text-emerald-400 transition-colors">MEP Admin</span>
         </Link>
       </div>

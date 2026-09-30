@@ -24,6 +24,19 @@ async function startServer() {
   }
   app.use('/uploads', express.static(uploadsDir));
 
+  // Ensure public/downloads directory exists and serve it statically
+  const downloadsDir = path.join(process.cwd(), 'public', 'downloads');
+  if (!fs.existsSync(downloadsDir)) {
+    fs.mkdirSync(downloadsDir, { recursive: true });
+  }
+  app.use('/downloads', express.static(downloadsDir));
+
+  const uploadsDownloadsDir = path.join(uploadsDir, 'downloads');
+  if (fs.existsSync(uploadsDownloadsDir)) {
+    app.use('/downloads', express.static(uploadsDownloadsDir));
+    app.use('/uploads/downloads', express.static(uploadsDownloadsDir));
+  }
+
   // Image Upload Endpoint for rich text editor and media
   app.post("/api/upload-image", async (req, res) => {
     try {
@@ -433,6 +446,14 @@ async function fetchMepInstagramPosts(): Promise<InstagramPost[]> {
     const distPath = path.isAbsolute(__dirname) && __dirname.endsWith('dist')
       ? __dirname 
       : path.join(process.cwd(), 'dist');
+    const distDownloads = path.join(distPath, 'downloads');
+    if (fs.existsSync(distDownloads)) {
+      app.use('/downloads', express.static(distDownloads));
+    }
+    const distUploads = path.join(distPath, 'uploads');
+    if (fs.existsSync(distUploads)) {
+      app.use('/uploads', express.static(distUploads));
+    }
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

@@ -119,10 +119,15 @@ const Header = () => {
         {/* Logo */}
         <Link to="/" className="flex items-center gap-2">
           <img 
-            src="https://mep.org.br/downloads/logoMep130x130.png" 
+            src="/downloads/logoMep130x130.png" 
             alt="MEP Logo" 
             className="w-[100px] h-auto object-contain"
-            referrerPolicy="no-referrer"
+            onError={(e) => {
+              const target = e.currentTarget;
+              if (!target.src.endsWith('/logoMep130x130.png')) {
+                target.src = '/logoMep130x130.png';
+              }
+            }}
           />
         </Link>
 
@@ -778,10 +783,15 @@ const Footer = () => {
         <div className="space-y-6">
           <div className="flex items-center gap-2">
             <img 
-              src="https://mep.org.br/downloads/logoMep130x130.png" 
+              src="/downloads/logoMep130x130.png" 
               alt="MEP Logo" 
               className="w-12 h-12 object-contain"
-              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.currentTarget;
+                if (!target.src.endsWith('/logoMep130x130.png')) {
+                  target.src = '/logoMep130x130.png';
+                }
+              }}
             />
             <span className="font-serif font-bold text-2xl tracking-tight">MEP</span>
           </div>
