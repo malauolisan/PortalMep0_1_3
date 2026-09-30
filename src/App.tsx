@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate
 import { Menu, X, Facebook, Instagram, Youtube, Mail, Phone, MapPin, ChevronRight, ChevronDown, Calendar, Clock, Twitter, Globe, ArrowRight, ArrowLeft, Share2, Check, Edit, Save, Plus, Trash2, LogOut, User, Search, ArrowUpDown, ArrowDownAZ, ArrowUpZA, RotateCcw, Filter, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { mockNews, mockEvents, mockInstitutions, mockArticles } from './data';
+import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules } from './data';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -503,33 +503,39 @@ const EventModal = ({ event, onClose }: { event: any, onClose: () => void }) => 
 
 const HeroSlider = () => {
   const { slides } = useContent();
+  const displaySlides = slides && slides.length > 0 ? slides : mockSlides;
   const [current, setCurrent] = useState(0);
 
   useEffect(() => {
-    if (slides.length === 0) return;
+    if (!displaySlides || displaySlides.length === 0) return;
     const timer = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % slides.length);
+      setCurrent((prev) => (prev + 1) % displaySlides.length);
     }, 6000);
     return () => clearInterval(timer);
-  }, [slides.length]);
+  }, [displaySlides.length]);
 
-  if (slides.length === 0) return null;
+  if (!displaySlides || displaySlides.length === 0) return null;
+
+  const activeIndex = current >= 0 && current < displaySlides.length ? current : 0;
+  const slide = displaySlides[activeIndex] || displaySlides[0];
+
+  if (!slide) return null;
 
   return (
     <section className="relative h-screen w-full overflow-hidden bg-gray-900">
       <AnimatePresence mode="wait">
         <motion.div
-          key={current}
+          key={activeIndex}
           initial={{ opacity: 0, scale: 1.1 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 1.5 }}
           className="absolute inset-0"
         >
-          {Boolean(slides[current]?.image && slides[current].image.trim()) ? (
+          {Boolean(slide.image && slide.image.trim()) ? (
             <img 
-              src={slides[current].image} 
-              alt={slides[current].title || 'Slide MEP'} 
+              src={slide.image} 
+              alt={slide.title || 'Slide MEP'} 
               className="absolute inset-0 w-full h-full object-cover"
               referrerPolicy="no-referrer"
             />
@@ -542,33 +548,33 @@ const HeroSlider = () => {
 
       <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
         <motion.h1 
-          key={`title-${current}`}
+          key={`title-${activeIndex}`}
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.5, duration: 0.8 }}
           className="text-4xl md:text-7xl font-serif text-white mb-4 drop-shadow-lg"
         >
-          {slides[current].title}
+          {slide.title || ''}
         </motion.h1>
         <motion.p 
-          key={`sub-${current}`}
+          key={`sub-${activeIndex}`}
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ delay: 0.8, duration: 0.8 }}
           className="text-xl md:text-3xl text-emerald-50 font-light italic drop-shadow-md mb-8"
         >
-          {slides[current].subtitle}
+          {slide.subtitle || ''}
         </motion.p>
-        {slides[current].link && (
+        {slide.link && (
           <motion.div
-            key={`btn-${current}`}
+            key={`btn-${activeIndex}`}
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 1.1, duration: 0.8 }}
           >
-            {slides[current].link.startsWith('http://') || slides[current].link.startsWith('https://') ? (
+            {slide.link.startsWith('http://') || slide.link.startsWith('https://') ? (
               <a 
-                href={slides[current].link}
+                href={slide.link}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="px-8 py-3 bg-emerald-600 text-white rounded-full font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 group inline-flex"
@@ -577,7 +583,7 @@ const HeroSlider = () => {
               </a>
             ) : (
               <Link 
-                to={slides[current].link}
+                to={slide.link}
                 className="px-8 py-3 bg-emerald-600 text-white rounded-full font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 group inline-flex"
               >
                 Saiba Mais <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
@@ -589,13 +595,13 @@ const HeroSlider = () => {
 
       {/* Dots */}
       <div className="absolute bottom-10 left-0 right-0 flex justify-center gap-3">
-        {slides.map((_, i) => (
+        {displaySlides.map((_, i) => (
           <button 
             key={i}
             onClick={() => setCurrent(i)}
             className={cn(
               "w-3 h-3 rounded-full transition-all",
-              current === i ? "bg-emerald-500 w-8" : "bg-white/50 hover:bg-white"
+              activeIndex === i ? "bg-emerald-500 w-8" : "bg-white/50 hover:bg-white"
             )}
           />
         ))}
@@ -704,11 +710,12 @@ const EventsSection = () => {
 
 const FeaturedModules = () => {
   const { featuredModules } = useContent();
+  const displayModules = featuredModules && featuredModules.length > 0 ? featuredModules : mockFeaturedModules;
 
   return (
     <section className="py-20 px-6 bg-white">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
-        {featuredModules.map((m) => {
+        {displayModules.filter(Boolean).map((m) => {
           const isExternal = m.link?.startsWith('http://') || m.link?.startsWith('https://');
           const content = (
             <>
@@ -716,7 +723,7 @@ const FeaturedModules = () => {
                 <img 
                   src={m.img} 
                   className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  alt={m.title}
+                  alt={m.title || 'Módulo'}
                   referrerPolicy="no-referrer"
                 />
               ) : (
@@ -724,9 +731,9 @@ const FeaturedModules = () => {
               )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
               <div className="absolute bottom-0 left-0 p-8 text-white">
-                <h3 className="text-2xl font-bold mb-2">{m.title}</h3>
+                <h3 className="text-2xl font-bold mb-2">{m.title || ''}</h3>
                 <p className="text-sm text-gray-200 mb-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  {m.desc}
+                  {m.desc || ''}
                 </p>
                 <div className={cn("w-10 h-1 rounded-full", m.color)} />
               </div>
@@ -888,9 +895,9 @@ const SocialMediaSection = () => {
                   </div>
                 ))
               ) : (
-                youtubeVideos.map((video) => (
+                youtubeVideos.filter(Boolean).map((video, idx) => (
                   <motion.a
-                    key={video.id}
+                    key={video.id || video.link || idx}
                     href={video.link}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -901,7 +908,7 @@ const SocialMediaSection = () => {
                       {video.thumbnail ? (
                         <img 
                           src={video.thumbnail} 
-                          alt={video.title} 
+                          alt={video.title || 'Vídeo'} 
                           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                           referrerPolicy="no-referrer"
                         />
@@ -913,10 +920,10 @@ const SocialMediaSection = () => {
                     </div>
                     <div className="flex flex-col justify-center">
                       <h3 className="font-bold text-gray-900 line-clamp-1 group-hover:text-emerald-700 transition-colors">
-                        {video.title}
+                        {video.title || 'Vídeo'}
                       </h3>
                       <p className="text-sm text-gray-600 line-clamp-2 mt-1">
-                        {video.description}
+                        {video.description || ''}
                       </p>
                     </div>
                   </motion.a>

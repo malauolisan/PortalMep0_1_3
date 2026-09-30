@@ -1568,22 +1568,22 @@ const ContentList = <T extends { id: string, title?: string, name?: string, date
   const [sortOrder, setSortOrder] = useState<'default' | 'asc' | 'desc'>('default');
   const itemsPerPage = 10;
 
-  const sortedItems = [...items].sort((a, b) => {
+  const sortedItems = [...items].filter(Boolean).sort((a, b) => {
     if (sortOrder === 'asc') {
-      const nameA = a.name || a.title || '';
-      const nameB = b.name || b.title || '';
+      const nameA = a?.name || a?.title || '';
+      const nameB = b?.name || b?.title || '';
       return nameA.localeCompare(nameB, 'pt-BR', { sensitivity: 'base' });
     }
     if (sortOrder === 'desc') {
-      const nameA = a.name || a.title || '';
-      const nameB = b.name || b.title || '';
+      const nameA = a?.name || a?.title || '';
+      const nameB = b?.name || b?.title || '';
       return nameB.localeCompare(nameA, 'pt-BR', { sensitivity: 'base' });
     }
     return 0;
   });
 
   const filteredItems = sortedItems.filter(item => 
-    (item.title || item.name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    Boolean(item) && (item.title || item.name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
@@ -2949,7 +2949,7 @@ export const ManageSlides = () => {
         </button>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {displaySlides.map(slide => (
+        {displaySlides.filter(Boolean).map(slide => (
           <div key={slide.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden group">
             <div className="h-48 relative bg-emerald-900">
               {slide.image ? (
@@ -2974,8 +2974,8 @@ export const ManageSlides = () => {
               </div>
             </div>
             <div className="p-6">
-              <h3 className="font-bold text-lg text-emerald-900">{slide.title}</h3>
-              <p className="text-sm text-gray-500">{slide.subtitle}</p>
+              <h3 className="font-bold text-lg text-emerald-900">{slide.title || ''}</h3>
+              <p className="text-sm text-gray-500">{slide.subtitle || ''}</p>
             </div>
           </div>
         ))}
@@ -3118,7 +3118,7 @@ export const ManageFeaturedModules = () => {
         </button>
       </header>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {displayModules.map(m => (
+        {displayModules.filter(Boolean).map(m => (
           <div key={m.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden group">
             <div className="h-40 relative bg-emerald-900">
               {m.img ? (
@@ -3145,8 +3145,8 @@ export const ManageFeaturedModules = () => {
             </div>
             <div className="p-6">
               <div className={cn("w-8 h-1 rounded-full mb-3", m.color)} />
-              <h3 className="font-bold text-lg text-emerald-900">{m.title}</h3>
-              <p className="text-xs text-gray-500 line-clamp-2">{m.desc}</p>
+              <h3 className="font-bold text-lg text-emerald-900">{m.title || ''}</h3>
+              <p className="text-xs text-gray-500 line-clamp-2">{m.desc || ''}</p>
             </div>
           </div>
         ))}
