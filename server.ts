@@ -11,7 +11,7 @@ const parser = new Parser();
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = 3000;
 
   // Use JSON middleware with generous payload limit for base64 optimized images
   app.use(express.json({ limit: "30mb" }));
