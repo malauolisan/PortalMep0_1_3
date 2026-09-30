@@ -1,4 +1,4 @@
-import { News, Event, Institution, Article, Slide, FeaturedModule } from './types';
+import { News, Event, Institution, Article, Slide, FeaturedModule, DownloadItem } from './types';
 
 const now = new Date().toISOString();
 
@@ -173,5 +173,28 @@ export const mockFeaturedModules: FeaturedModule[] = [
     color: "bg-rose-600",
     link: "/contato",
     order: 3
+  }
+];
+
+export const mockDownloads: DownloadItem[] = [
+  {
+    id: '1',
+    title: 'Estatuto do Movimento Espírita Progressista',
+    description: 'Documento oficial de fundação, princípios doutrinários e diretrizes gerais do MEP Brasil.',
+    fileUrl: 'https://mep.org.br/downloads/logoMep130x130.png',
+    fileName: 'estatuto-mep-brasil.pdf',
+    fileSize: 345000,
+    fileType: 'application/pdf',
+    createdAt: now
+  },
+  {
+    id: '2',
+    title: 'Cartilha de Princípios e Ação Social',
+    description: 'Guia orientador para casas espíritas e voluntários em ações fraternas e comunitárias.',
+    fileUrl: 'https://mep.org.br/downloads/logoMep130x130.png',
+    fileName: 'cartilha-acao-social.pdf',
+    fileSize: 520000,
+    fileType: 'application/pdf',
+    createdAt: now
   }
 ];

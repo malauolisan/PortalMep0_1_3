@@ -85,3 +85,16 @@ export interface FeaturedModule {
   createdAt?: string;
   updatedAt?: string;
 }
+
+export interface DownloadItem {
+  id: string;
+  title: string;
+  description: string;
+  fileUrl: string;
+  fileName?: string;
+  fileSize?: number;
+  fileType?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

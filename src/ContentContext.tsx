@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { News, Event, Institution, Article, Slide, FeaturedModule, UserProfile } from './types';
+import { News, Event, Institution, Article, Slide, FeaturedModule, DownloadItem, UserProfile } from './types';
 import { db, auth, handleFirestoreError, OperationType } from './firebase';
 import { collection, onSnapshot, query, orderBy, addDoc, updateDoc, deleteDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { mockEvents, mockSlides, mockFeaturedModules } from './data';
+import { mockEvents, mockSlides, mockFeaturedModules, mockDownloads } from './data';
 
 interface ContentContextType {
   news: News[];
@@ -12,6 +12,7 @@ interface ContentContextType {
   articles: Article[];
   slides: Slide[];
   featuredModules: FeaturedModule[];
+  downloads: DownloadItem[];
   user: UserProfile | null;
   loading: boolean;
   
@@ -42,6 +43,10 @@ interface ContentContextType {
   updateFeaturedModule: (id: string, data: Partial<FeaturedModule>) => Promise<void>;
   deleteFeaturedModule: (id: string) => Promise<void>;
   restoreDefaultFeaturedModules: () => Promise<void>;
+
+  addDownload: (data: Omit<DownloadItem, 'id' | 'createdAt'>) => Promise<void>;
+  updateDownload: (id: string, data: Partial<DownloadItem>) => Promise<void>;
+  deleteDownload: (id: string) => Promise<void>;
 }
 
 const ContentContext = createContext<ContentContextType | undefined>(undefined);
@@ -53,6 +58,7 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [slides, setSlides] = useState<Slide[]>([]);
   const [featuredModules, setFeaturedModules] = useState<FeaturedModule[]>([]);
+  const [downloads, setDownloads] = useState<DownloadItem[]>([]);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -245,6 +251,25 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
       setFeaturedModules(data.length > 0 ? data : mockFeaturedModules);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'featuredModules'));
 
+    // Retrieve all downloads
+    const qDownloads = collection(db, 'downloads');
+    const unsubDownloads = onSnapshot(qDownloads, (snapshot) => {
+      const data = snapshot.docs.map(d => {
+        const item = d.data();
+        return {
+          id: d.id,
+          ...item,
+          createdAt: item.createdAt || item.updatedAt || new Date().toISOString()
+        } as DownloadItem;
+      });
+      data.sort((a, b) => {
+        const timeB = b.createdAt || b.updatedAt || '';
+        const timeA = a.createdAt || a.updatedAt || '';
+        return timeB.localeCompare(timeA);
+      });
+      setDownloads(data.length > 0 ? data : mockDownloads);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'downloads'));
+
     return () => {
       unsubNews();
       unsubEvents();
@@ -252,6 +277,7 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
       unsubArticles();
       unsubSlides();
       unsubModules();
+      unsubDownloads();
     };
   }, []);
 
@@ -411,15 +437,35 @@ export const ContentProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) { handleFirestoreError(err, OperationType.WRITE, 'featuredModules'); }
   };
 
+  const addDownload = async (data: Omit<DownloadItem, 'id' | 'createdAt'>) => {
+    try {
+      await addDoc(collection(db, 'downloads'), { ...data, createdAt: new Date().toISOString() });
+    } catch (err) { handleFirestoreError(err, OperationType.CREATE, 'downloads'); }
+  };
+  const updateDownload = async (id: string, data: Partial<DownloadItem>) => {
+    try {
+      const now = new Date().toISOString();
+      const existing = downloads.find(d => d.id === id);
+      const createdAt = existing?.createdAt || data.createdAt || now;
+      await setDoc(doc(db, 'downloads', id), { ...data, createdAt, updatedAt: now }, { merge: true });
+    } catch (err) { handleFirestoreError(err, OperationType.UPDATE, `downloads/${id}`); }
+  };
+  const deleteDownload = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'downloads', id));
+    } catch (err) { handleFirestoreError(err, OperationType.DELETE, `downloads/${id}`); }
+  };
+
   return (
     <ContentContext.Provider value={{ 
-      news, events, institutions, articles, slides, featuredModules, user, loading,
+      news, events, institutions, articles, slides, featuredModules, downloads, user, loading,
       addNews, updateNews, deleteNews,
       addEvent, updateEvent, deleteEvent, restoreDefaultEvents,
       addInstitution, updateInstitution, deleteInstitution,
       addArticle, updateArticle, deleteArticle,
       addSlide, updateSlide, deleteSlide, restoreDefaultSlides,
-      addFeaturedModule, updateFeaturedModule, deleteFeaturedModule, restoreDefaultFeaturedModules
+      addFeaturedModule, updateFeaturedModule, deleteFeaturedModule, restoreDefaultFeaturedModules,
+      addDownload, updateDownload, deleteDownload
     }}>
       {children}
     </ContentContext.Provider>

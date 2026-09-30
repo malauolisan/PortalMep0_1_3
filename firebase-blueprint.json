@@ -108,6 +108,21 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "desc", "img", "color", "link"]
+    },
+    "downloads": {
+      "title": "Downloads",
+      "description": "Arquivos disponíveis para download.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Título do arquivo" },
+        "description": { "type": "string", "description": "Descrição do arquivo" },
+        "fileUrl": { "type": "string", "description": "URL do arquivo no servidor do portal" },
+        "fileName": { "type": "string", "description": "Nome original do arquivo" },
+        "fileSize": { "type": "number", "description": "Tamanho em bytes" },
+        "fileType": { "type": "string", "description": "Tipo MIME ou formato" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "fileUrl"]
     }
   },
   "firestore": {
@@ -117,6 +132,7 @@
     "/articles/{articleId}": { "schema": "articles", "description": "Coleção de artigos" },
     "/users/{userId}": { "schema": "users", "description": "Perfis de usuários" },
     "/slides/{slideId}": { "schema": "slides", "description": "Slides da home" },
-    "/featuredModules/{moduleId}": { "schema": "featuredModules", "description": "Módulos da home" }
+    "/featuredModules/{moduleId}": { "schema": "featuredModules", "description": "Módulos da home" },
+    "/downloads/{downloadId}": { "schema": "downloads", "description": "Arquivos para download" }
   }
 }

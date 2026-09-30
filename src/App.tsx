@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useParams, useNavigate } from 'react-router-dom';
-import { Menu, X, Facebook, Instagram, Youtube, Mail, Phone, MapPin, ChevronRight, ChevronDown, Calendar, Clock, Twitter, Globe, ArrowRight, ArrowLeft, Share2, Check, Edit, Save, Plus, Trash2, LogOut, User, Search, ArrowUpDown, ArrowDownAZ, ArrowUpZA, RotateCcw, Filter, Building2 } from 'lucide-react';
+import { Menu, X, Facebook, Instagram, Youtube, Mail, Phone, MapPin, ChevronRight, ChevronDown, Calendar, Clock, Twitter, Globe, ArrowRight, ArrowLeft, Share2, Check, Edit, Save, Plus, Trash2, LogOut, User, Search, ArrowUpDown, ArrowDownAZ, ArrowUpZA, RotateCcw, Filter, Building2, Download, FileText, FileDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
-import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules } from './data';
+import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules, mockDownloads } from './data';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { ContentProvider, useContent } from './ContentContext';
-import { LoginPage, AdminLayout, Dashboard, ManageNews, ManageEvents, ManageInstitutions, ManageArticles, ManageUsers, ManageSlides, ManageFeaturedModules } from './Admin';
+import { LoginPage, AdminLayout, Dashboard, ManageNews, ManageEvents, ManageInstitutions, ManageArticles, ManageUsers, ManageSlides, ManageFeaturedModules, ManageDownloads } from './Admin';
 import { auth, createNewUser, db } from './firebase';
 import { setDoc, doc, getDoc } from 'firebase/firestore';
 import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { customUrlTransform, markdownComponents, formatExternalUrl } from './utils/linkUtils';
+import { formatFileSize } from './utils/fileUpload';
 
 export { customUrlTransform, markdownComponents, formatExternalUrl };
 
@@ -83,6 +84,7 @@ const Header = () => {
     { name: 'Notícias', href: '/noticias' },
     { name: 'Artigos', href: '/artigos' },
     { name: 'Eventos', href: '/eventos' },
+    { name: 'Downloads', href: '/downloads' },
     { 
       name: 'Sobre Nós', 
       href: '/sobre',
@@ -1666,6 +1668,110 @@ const EventsPage = () => {
   );
 };
 
+const DownloadsPage = () => {
+  const { downloads } = useContent();
+  const [searchTerm, setSearchTerm] = useState('');
+  const displayDownloads = downloads && downloads.length > 0 ? downloads : mockDownloads;
+
+  const filteredDownloads = displayDownloads.filter(item => {
+    if (!item) return false;
+    const term = searchTerm.toLowerCase();
+    const title = (item.title || '').toLowerCase();
+    const desc = (item.description || '').toLowerCase();
+    const fileName = (item.fileName || '').toLowerCase();
+    return title.includes(term) || desc.includes(term) || fileName.includes(term);
+  });
+
+  return (
+    <div className="pt-32 pb-24 px-6 bg-slate-50/50 min-h-screen">
+      <div className="max-w-7xl mx-auto space-y-12">
+        {/* Header */}
+        <div className="text-center max-w-3xl mx-auto space-y-4">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold uppercase tracking-wider">
+            <Download size={14} /> Arquivos & Documentos
+          </div>
+          <h1 className="text-4xl md:text-5xl font-serif text-emerald-950">Downloads</h1>
+          <p className="text-gray-600 text-base md:text-lg leading-relaxed">
+            Acesse e baixe gratuitamente cartilhas, estatutos, artigos doutrinários e documentos informativos do Movimento Espírita Progressista.
+          </p>
+
+          {/* Search bar */}
+          <div className="pt-4 max-w-md mx-auto relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Buscar por título ou descrição..." 
+              value={searchTerm} 
+              onChange={(e) => setSearchTerm(e.target.value)} 
+              className="w-full pl-11 pr-4 py-3 bg-white border border-emerald-100 rounded-full shadow-xs outline-none focus:ring-2 focus:ring-emerald-500/20 text-sm"
+            />
+          </div>
+        </div>
+
+        {/* Downloads Grid */}
+        {filteredDownloads.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredDownloads.map((item) => (
+              <div 
+                key={item.id}
+                className="bg-white rounded-3xl p-8 border border-emerald-100/60 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+              >
+                <div className="space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <FileText size={28} />
+                  </div>
+
+                  <div>
+                    <h2 className="text-xl font-serif font-bold text-emerald-950 mb-2 group-hover:text-emerald-700 transition-colors">
+                      {item.title}
+                    </h2>
+                    <p className="text-gray-600 text-sm leading-relaxed line-clamp-4">
+                      {item.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-6 mt-6 border-t border-gray-100 flex items-center justify-between gap-4">
+                  <div className="text-xs text-gray-500 space-y-0.5 truncate">
+                    <p className="font-semibold text-gray-700 truncate">{item.fileName || 'Arquivo'}</p>
+                    <p>{formatFileSize(item.fileSize)}</p>
+                  </div>
+
+                  <a 
+                    href={item.fileUrl}
+                    download={item.fileName || item.title}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs shadow-md shadow-emerald-100 transition-all shrink-0 cursor-pointer"
+                  >
+                    <Download size={14} /> Baixar
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16 bg-white rounded-3xl border border-gray-100 max-w-lg mx-auto p-8 space-y-4">
+            <FileText size={48} className="mx-auto text-gray-300" />
+            <h3 className="text-xl font-bold text-gray-800">Nenhum arquivo encontrado</h3>
+            <p className="text-gray-500 text-sm">
+              {searchTerm ? 'Nenhum resultado corresponde à sua pesquisa.' : 'Nenhum arquivo disponível para download no momento.'}
+            </p>
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors"
+              >
+                Limpar busca
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const AboutMEPPage = () => {
   const content = `
 Pode-se considerar o surgimento do MEP como um raro fenômeno de aglutinamento de diferenças, uma característica que o distingue do movimento espírita institucionalizado ou federativo. Ele surgiu de uma conjugação de circunstâncias, iniciativas e aspirações ocorridas nos últimos anos, em vários pontos do Brasil.
@@ -1966,15 +2072,17 @@ export default function App() {
               <Route path="/artigos" element={<ArticlesPage />} />
               <Route path="/artigos/:id" element={<ArticleDetailPage />} />
               <Route path="/eventos" element={<EventsPage />} />
+              <Route path="/downloads" element={<DownloadsPage />} />
               <Route path="/login" element={<LoginPage />} />
-        <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
-        <Route path="/admin/noticias" element={<AdminLayout><ManageNews /></AdminLayout>} />
-        <Route path="/admin/eventos" element={<AdminLayout><ManageEvents /></AdminLayout>} />
-        <Route path="/admin/instituicoes" element={<AdminLayout><ManageInstitutions /></AdminLayout>} />
-        <Route path="/admin/artigos" element={<AdminLayout><ManageArticles /></AdminLayout>} />
-        <Route path="/admin/usuarios" element={<AdminLayout><ManageUsers /></AdminLayout>} />
-        <Route path="/admin/slides" element={<AdminLayout><ManageSlides /></AdminLayout>} />
-        <Route path="/admin/modulos" element={<AdminLayout><ManageFeaturedModules /></AdminLayout>} />
+              <Route path="/admin" element={<AdminLayout><Dashboard /></AdminLayout>} />
+              <Route path="/admin/noticias" element={<AdminLayout><ManageNews /></AdminLayout>} />
+              <Route path="/admin/eventos" element={<AdminLayout><ManageEvents /></AdminLayout>} />
+              <Route path="/admin/instituicoes" element={<AdminLayout><ManageInstitutions /></AdminLayout>} />
+              <Route path="/admin/artigos" element={<AdminLayout><ManageArticles /></AdminLayout>} />
+              <Route path="/admin/downloads" element={<AdminLayout><ManageDownloads /></AdminLayout>} />
+              <Route path="/admin/usuarios" element={<AdminLayout><ManageUsers /></AdminLayout>} />
+              <Route path="/admin/slides" element={<AdminLayout><ManageSlides /></AdminLayout>} />
+              <Route path="/admin/modulos" element={<AdminLayout><ManageFeaturedModules /></AdminLayout>} />
               <Route path="/sobre" element={<AboutMEPPage />} />
               <Route path="/sobre/como-surgiu" element={<AboutMEPPage />} />
               <Route path="/sobre/ato-fundacao" element={<FoundationActPage />} />

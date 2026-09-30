@@ -78,6 +78,60 @@ async function startServer() {
     }
   });
 
+  // General File Upload Endpoint for downloads stored on the portal host
+  app.post("/api/upload-file", async (req, res) => {
+    try {
+      const { dataUrl, fileName = "arquivo" } = req.body;
+      if (!dataUrl || typeof dataUrl !== 'string') {
+        return res.status(400).json({ error: "Campo dataUrl é obrigatório e deve ser uma string válida." });
+      }
+
+      const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) {
+        return res.status(400).json({ error: "Formato inválido. Deve ser um Data URL base64." });
+      }
+
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+
+      const origExt = path.extname(fileName) || '.bin';
+      const baseName = path.basename(fileName, origExt)
+        .replace(/[^a-zA-Z0-9_-]/g, '_')
+        .substring(0, 50);
+
+      const uniqueFileName = `dl_${Date.now()}_${baseName || 'arquivo'}${origExt}`;
+      const downloadsDir = path.join(uploadsDir, 'downloads');
+      if (!fs.existsSync(downloadsDir)) {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      }
+
+      const filePath = path.join(downloadsDir, uniqueFileName);
+      fs.writeFileSync(filePath, buffer);
+
+      // In production mode, also ensure it is available in dist/uploads/downloads if dist exists
+      const distDownloads = path.join(process.cwd(), 'dist', 'uploads', 'downloads');
+      if (fs.existsSync(path.join(process.cwd(), 'dist'))) {
+        if (!fs.existsSync(distDownloads)) {
+          fs.mkdirSync(distDownloads, { recursive: true });
+        }
+        fs.writeFileSync(path.join(distDownloads, uniqueFileName), buffer);
+      }
+
+      const publicUrl = `/uploads/downloads/${uniqueFileName}`;
+      res.json({
+        success: true,
+        url: publicUrl,
+        fileName: fileName,
+        storedName: uniqueFileName,
+        fileSize: buffer.length,
+        fileType: mimeType
+      });
+    } catch (err: any) {
+      console.error("[Upload File API] Erro ao salvar arquivo:", err);
+      res.status(500).json({ error: err.message || "Falha ao gravar arquivo." });
+    }
+  });
+
   // API routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

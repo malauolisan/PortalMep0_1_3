@@ -51,7 +51,10 @@ import {
   Move,
   Maximize2,
   Sliders,
-  HelpCircle
+  HelpCircle,
+  Download,
+  FileText,
+  FileDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useContent } from './ContentContext';
@@ -64,9 +67,10 @@ import { cn } from './lib/utils';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { News, Event, Institution, Article, UserProfile, Slide, FeaturedModule } from './types';
-import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules } from './data';
+import { News, Event, Institution, Article, UserProfile, Slide, FeaturedModule, DownloadItem } from './types';
+import { mockNews, mockEvents, mockInstitutions, mockArticles, mockSlides, mockFeaturedModules, mockDownloads } from './data';
 import { uploadOptimizedImage, formatBytes, ImageOptimizationStats, optimizeImage } from './utils/imageOptimizer';
+import { uploadPortalFile, formatFileSize } from './utils/fileUpload';
 import { customUrlTransform, markdownComponents, formatExternalUrl, parseImageMetadata } from './utils/linkUtils';
 
 export { customUrlTransform, markdownComponents, formatExternalUrl, parseImageMetadata };
@@ -1168,6 +1172,7 @@ const AdminSidebar = () => {
     { name: 'Eventos', icon: Calendar, path: '/admin/eventos' },
     { name: 'Instituições', icon: Building2, path: '/admin/instituicoes' },
     { name: 'Artigos', icon: BookOpen, path: '/admin/artigos' },
+    { name: 'Downloads', icon: Download, path: '/admin/downloads' },
     { name: 'Slides', icon: ImageIcon, path: '/admin/slides' },
     { name: 'Módulos Home', icon: Grid, path: '/admin/modulos' },
     { name: 'Usuários', icon: Users, path: '/admin/usuarios' },
@@ -1252,13 +1257,14 @@ export const AdminLayout = ({ children }: { children: React.ReactNode }) => {
 // --- Dashboard ---
 
 export const Dashboard = () => {
-  const { news, events, institutions, articles, slides, featuredModules } = useContent();
+  const { news, events, institutions, articles, slides, featuredModules, downloads } = useContent();
 
   const stats = [
     { name: 'Notícias', count: news.length, icon: Newspaper, color: 'bg-blue-500' },
     { name: 'Eventos', count: events.length, icon: Calendar, color: 'bg-emerald-500' },
     { name: 'Instituições', count: institutions.length, icon: Building2, color: 'bg-amber-500' },
     { name: 'Artigos', count: articles.length, icon: BookOpen, color: 'bg-purple-500' },
+    { name: 'Downloads', count: (downloads || []).length, icon: Download, color: 'bg-teal-500' },
     { name: 'Slides', count: slides.length, icon: ImageIcon, color: 'bg-rose-500' },
     { name: 'Módulos', count: featuredModules.length, icon: Grid, color: 'bg-indigo-500' },
   ];
@@ -1279,6 +1285,9 @@ export const Dashboard = () => {
           </Link>
           <Link to="/admin/artigos" className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
             <Plus size={16} /> Artigo
+          </Link>
+          <Link to="/admin/downloads" className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
+            <Plus size={16} /> Download
           </Link>
           <Link to="/admin/slides" className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
             <Plus size={16} /> Slide
@@ -3147,6 +3156,324 @@ export const ManageFeaturedModules = () => {
               <div className={cn("w-8 h-1 rounded-full mb-3", m.color)} />
               <h3 className="font-bold text-lg text-emerald-900">{m.title || ''}</h3>
               <p className="text-xs text-gray-500 line-clamp-2">{m.desc || ''}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// --- Manage Downloads ---
+
+export const FileUploadField = ({
+  fileUrl,
+  fileName,
+  fileSize,
+  fileType,
+  onUploadSuccess,
+  disabled
+}: {
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileType?: string;
+  onUploadSuccess: (data: { url: string; fileName: string; fileSize: number; fileType: string }) => void;
+  disabled?: boolean;
+}) => {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await uploadPortalFile(file);
+      onUploadSuccess(res);
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      setError(err?.message || "Erro ao realizar upload do arquivo.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+        Arquivo para Download (Armazenado no Servidor do Portal)
+      </label>
+
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-5 border border-dashed border-emerald-300 bg-emerald-50/50 rounded-2xl">
+        <input 
+          ref={fileInputRef}
+          type="file" 
+          onChange={handleFileChange}
+          disabled={uploading || disabled}
+          className="hidden"
+          id="portal-file-upload-input"
+        />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading || disabled}
+          className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl font-bold flex items-center gap-2 text-sm shadow-md shadow-emerald-100 cursor-pointer transition-colors"
+        >
+          {uploading ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              <span>Enviando arquivo...</span>
+            </>
+          ) : (
+            <>
+              <UploadCloud size={18} />
+              <span>Fazer Upload do Arquivo</span>
+            </>
+          )}
+        </button>
+
+        <div className="text-xs text-gray-600 flex-1">
+          {fileUrl ? (
+            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-emerald-200">
+              <CheckCircle2 size={16} className="text-emerald-600 shrink-0" />
+              <div className="overflow-hidden">
+                <p className="font-bold text-gray-800 truncate">{fileName || 'Arquivo pronto para download'}</p>
+                <p className="text-[11px] text-gray-500">{formatFileSize(fileSize)} {fileType ? `• ${fileType}` : ''}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-gray-500 leading-relaxed">
+              Formatos aceitos: PDF, DOCX, ZIP, EPUB, TXT, imagens, etc. O arquivo é armazenado diretamente no mesmo servidor em que o portal está hospedado.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+};
+
+export const ManageDownloads = () => {
+  const { downloads, addDownload, updateDownload, deleteDownload } = useContent();
+  const [editing, setEditing] = useState<DownloadItem | null>(null);
+  const [isAdding, setIsAdding] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const displayDownloads = downloads && downloads.length > 0 ? downloads : mockDownloads;
+
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    fileUrl: '',
+    fileName: '',
+    fileSize: 0,
+    fileType: ''
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      alert('Por favor, informe o título do arquivo.');
+      return;
+    }
+    if (!form.description.trim()) {
+      alert('Por favor, informe a descrição do arquivo.');
+      return;
+    }
+    if (!form.fileUrl.trim()) {
+      alert('Por favor, faça o upload de um arquivo antes de salvar.');
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage(null);
+    try {
+      if (editing) {
+        await updateDownload(editing.id, form);
+      } else {
+        await addDownload(form);
+      }
+      setEditing(null);
+      setIsAdding(false);
+      setForm({ title: '', description: '', fileUrl: '', fileName: '', fileSize: 0, fileType: '' });
+    } catch (error: any) {
+      console.error("Error saving download:", error);
+      const msg = error?.message || 'Erro ao salvar arquivo para download.';
+      setErrorMessage(msg);
+      alert('Erro ao salvar: ' + msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (isAdding || editing) {
+    return (
+      <div className="space-y-8">
+        <button 
+          onClick={() => { setIsAdding(false); setEditing(null); setErrorMessage(null); }}
+          className="flex items-center gap-2 text-emerald-600 font-bold hover:gap-3 transition-all"
+        >
+          <ArrowLeft size={20} /> Voltar para Lista
+        </button>
+        <header>
+          <h1 className="text-3xl font-serif text-emerald-950">{editing ? 'Editar Download' : 'Novo Arquivo para Download'}</h1>
+          <p className="text-gray-500">Cadastre ou edite arquivos disponíveis para download no portal.</p>
+        </header>
+
+        {errorMessage && (
+          <div className="p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-medium border border-red-100">
+            {errorMessage}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="max-w-2xl bg-white p-8 rounded-3xl shadow-sm border border-gray-100 space-y-6">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Título do Arquivo</label>
+            <input 
+              type="text" 
+              value={form.title} 
+              onChange={(e) => setForm({...form, title: e.target.value})} 
+              placeholder="Ex: Estatuto do MEP Brasil 2026"
+              className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20" 
+              required 
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Descrição</label>
+            <textarea 
+              value={form.description} 
+              onChange={(e) => setForm({...form, description: e.target.value})} 
+              rows={4}
+              placeholder="Descreva o conteúdo do arquivo e para quem é destinado..."
+              className="w-full p-3 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20" 
+              required 
+            />
+          </div>
+
+          <FileUploadField 
+            fileUrl={form.fileUrl}
+            fileName={form.fileName}
+            fileSize={form.fileSize}
+            fileType={form.fileType}
+            onUploadSuccess={(data) => setForm(prev => ({
+              ...prev,
+              fileUrl: data.url,
+              fileName: data.fileName,
+              fileSize: data.fileSize,
+              fileType: data.fileType,
+              title: prev.title.trim() ? prev.title : data.fileName.replace(/\.[^/.]+$/, "")
+            }))}
+            disabled={saving}
+          />
+
+          <button 
+            type="submit" 
+            disabled={saving}
+            className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-100 cursor-pointer"
+          >
+            <Save size={20} /> {saving ? 'Salvando...' : (editing ? 'Salvar Alterações' : 'Adicionar Arquivo')}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <ConfirmDialog 
+        isOpen={!!confirmId}
+        onClose={() => setConfirmId(null)}
+        onConfirm={() => confirmId && deleteDownload(confirmId)}
+        title="Excluir Download"
+        message="Tem certeza que deseja excluir este arquivo? Ele não estará mais acessível para os usuários do portal."
+      />
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+        <div>
+          <h1 className="text-4xl font-serif text-emerald-950 mb-2">Gerenciar Downloads</h1>
+          <p className="text-gray-500">Cadastre arquivos armazenados no servidor do portal para download público.</p>
+        </div>
+        <button onClick={() => { setIsAdding(true); setEditing(null); setErrorMessage(null); setForm({ title: '', description: '', fileUrl: '', fileName: '', fileSize: 0, fileType: '' }); }} className="px-8 py-4 bg-emerald-600 text-white rounded-2xl font-bold flex items-center gap-3 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">
+          <Plus size={24} /> Novo Arquivo
+        </button>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {displayDownloads.filter(Boolean).map(item => (
+          <div key={item.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow group">
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                  <FileText size={24} />
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => { 
+                      setEditing(item); 
+                      setErrorMessage(null);
+                      setForm({
+                        title: item.title || '',
+                        description: item.description || '',
+                        fileUrl: item.fileUrl || '',
+                        fileName: item.fileName || '',
+                        fileSize: item.fileSize || 0,
+                        fileType: item.fileType || ''
+                      }); 
+                    }} 
+                    className="p-2 bg-gray-50 text-emerald-600 rounded-xl hover:bg-emerald-50 transition-colors"
+                    title="Editar"
+                  >
+                    <Edit size={18} />
+                  </button>
+                  <button 
+                    onClick={() => setConfirmId(item.id)} 
+                    className="p-2 bg-gray-50 text-red-600 rounded-xl hover:bg-red-50 transition-colors"
+                    title="Excluir"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-lg text-emerald-950 mb-1">{item.title || 'Arquivo sem título'}</h3>
+                <p className="text-sm text-gray-600 line-clamp-3 leading-relaxed">{item.description}</p>
+              </div>
+
+              <div className="pt-2 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span className="truncate max-w-[200px]">{item.fileName || 'arquivo'}</span>
+                <span>{formatFileSize(item.fileSize)}</span>
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-gray-100 flex items-center justify-between">
+              <span className="text-xs text-gray-400">
+                {item.createdAt ? new Date(item.createdAt).toLocaleDateString('pt-BR') : ''}
+              </span>
+              <a 
+                href={item.fileUrl} 
+                download={item.fileName || item.title}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl text-xs font-bold transition-colors"
+              >
+                <Download size={14} /> Baixar
+              </a>
             </div>
           </div>
         ))}
